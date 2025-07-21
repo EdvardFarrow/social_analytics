@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Django
+*.sqlite3
+*.log
+*.pot
+*.pyc
+*.pyo
+*.mo
+*.db
+*.bak
+
+# Django migrations
+**/migrations/
+!**/migrations/__init__.py
+
+# Environment
+.env
+.venv/
+venv/
+ENV/
+env/
+*.env
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Static and media (if generated or collected)
+staticfiles/
+static/
+media/
+
+# Coverage and testing
+.coverage
+htmlcov/
+*.cover
+*.py,cover
+
+# Docker
+*.pid
+docker-compose.override.yml
+docker-compose.local.yml
