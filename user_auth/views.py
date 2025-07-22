@@ -65,8 +65,11 @@ def google_login(request):
 def google_callback(request):
     code = request.GET.get('code')
     if not code:
+        print('❌ No code provided in callback')
         return Response({'error': 'No code provided'}, status=400)
 
+    print(f'📩 Received code: {code}')
+    
     token_url = 'https://oauth2.googleapis.com/token'
     token_data = {
         'code': code,
@@ -75,17 +78,27 @@ def google_callback(request):
         'redirect_uri': settings.GOOGLE_REDIRECT_URI,
         'grant_type': 'authorization_code',
     }
+    print('🔐 Sending token exchange request...')
     token_resp = requests.post(token_url, data=token_data)
+    
+    print(f'📦 Token response status: {token_resp.status_code}')
+    print(f'📦 Token response content: {token_resp.content}')
+    
     if token_resp.status_code != 200:
         return Response({'error': 'Failed to get token'}, status=400)
     
     access_token = token_resp.json().get('access_token')
+    print(f'✅ Access token received: {access_token[:10]}...')
 
+    print('🧠 Requesting userinfo...')
+    userinfo_url = "https://openidconnect.googleapis.com/v1/userinfo"
     userinfo_resp = requests.get(
-        'https://www.googleapis.com/oauth2/v1/userinfo',
-        params={'alt': 'json'},
+        userinfo_url,
         headers={'Authorization': f'Bearer {access_token}'},
     )
+    print(f'👤 Userinfo response status: {userinfo_resp.status_code}')
+    print(f'👤 Userinfo response content: {userinfo_resp.content}')
+    
     if userinfo_resp.status_code != 200:
         return Response({'error': 'Failed to get userinfo'}, status=400)
 
@@ -93,9 +106,16 @@ def google_callback(request):
     email = user_data.get('email')
     name = user_data.get('name')
 
+    print(f'📧 Email: {email}, 👤 Name: {name}')
+    
     user, created = User.objects.get_or_create(email=email, defaults={'full_name': name})
+    if created:
+        print('🆕 New user created.')
+    else:
+        print('🔁 Existing user found.')
     
     refresh = RefreshToken.for_user(user)
+    print('🔑 Tokens generated and response returned.')
     return Response({
         'access': str(refresh.access_token),
         'refresh': str(refresh),
