@@ -84,7 +84,7 @@ class YouTubeCallbackView(View):
         userinfo = userinfo_response.json()
         print("👤 USERINFO:", userinfo)
 
-        # ВРЕМЕННО
+        
         from django.contrib.auth import get_user_model
         User = get_user_model()
         user = User.objects.first()
