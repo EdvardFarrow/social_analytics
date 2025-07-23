@@ -43,7 +43,7 @@ class YouTubeToken(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='youtube_token')
     access_token = models.TextField()
     refresh_token = models.TextField()
-    expires_at = models.DateTimeField()  # когда истекает access_token
+    expires_at = models.DateTimeField()  
 
     def __str__(self):
         return f"Tokens for {self.user.email}"

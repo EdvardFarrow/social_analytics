@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import YouTubeChannel, YouTubeVideo
+from .models import YouTubeChannel, YouTubeVideo, YouTubeChannelStats
 
 
 class YouTubeVideoSerializer(serializers.ModelSerializer):
@@ -29,3 +29,15 @@ class YouTubeChannelSerializer(serializers.ModelSerializer):
             'created_at',
             'videos',
         ]
+
+
+class YouTubeChannelStatsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = YouTubeChannelStats
+        fields = [
+            'channel_id', 
+            'title', 
+            'subscriber_count', 
+            'view_count', 
+            'video_count'
+            ]
