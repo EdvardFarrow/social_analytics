@@ -43,7 +43,8 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'accounts',
     'user_auth',
-    'youtube'
+    'youtube',
+    'tiktok'
 ]
 
 MIDDLEWARE = [
@@ -169,3 +170,7 @@ GOOGLE_REDIRECT_URI = config("GOOGLE_REDIRECT_URI")
 YOUTUBE_CLIENT_ID = config("YOUTUBE_CLIENT_ID")
 YOUTUBE_CLIENT_SECRET = config("YOUTUBE_CLIENT_SECRET")
 YOUTUBE_REDIRECT_URI = config("YOUTUBE_REDIRECT_URI")
+
+TIKTOK_CLIENT_KEY = config("TIKTOK_CLIENT_KEY")
+TIKTOK_CLIENT_SECRET = config("TIKTOK_CLIENT_SECRET")
+TIKTOK_REDIRECT_URI = config("TIKTOK_REDIRECT_URI")
