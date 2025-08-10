@@ -1,0 +1,34 @@
+{% extends 'youtube/base.html' %}
+
+{% block title %}YouTube Dashboard{% endblock %}
+
+{% block content %}
+    <h1>{{ stats.title }} — Chanel Stats</h1>
+    <ul>
+    <li>Followers: {{ stats.subscriber_count }}</li>
+    <li>Views: {{ stats.view_count }}</li>
+    <li>Video: {{ stats.video_count }}</li>
+    </ul>
+
+    <canvas id="statsChart" width="400" height="200"></canvas>
+
+    <script>
+    const ctx = document.getElementById('statsChart').getContext('2d');
+    const chart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Followers', 'Views', 'Video'],
+            datasets: [{
+            label: 'Stats',
+            data: [
+                {{ stats.subscriber_count }},
+                {{ stats.view_count }},
+                {{ stats.video_count }}
+            ],
+            backgroundColor: ['#ff6384', '#36a2eb', '#cc65fe'],
+        }]
+        },
+        options: {}
+    });
+    </script>
+{% endblock %}

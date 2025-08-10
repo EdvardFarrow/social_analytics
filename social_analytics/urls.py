@@ -16,10 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic import RedirectView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("auth/", include("user_auth.urls")),
     path('api/youtube/', include('youtube.urls')),
     path('tiktok/', include('tiktok.urls')),
+    path('', RedirectView.as_view(url='/api/youtube/dashboard/', permanent=False))
 ]

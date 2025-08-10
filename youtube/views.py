@@ -2,8 +2,10 @@ import requests
 from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, login
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponseRedirect
+from django.shortcuts import render, redirect
 from django.views import View
 from rest_framework import generics, permissions
 from rest_framework.views import APIView
@@ -43,13 +45,8 @@ class YouTubeLoginView(View):
 
 class YouTubeCallbackView(View):
     def get(self, request):
-        print("🔁 CALLBACK VIEW STARTED")
-
         code = request.GET.get("code")
-        print("➡️ CODE:", code)
-
         if not code:
-            print("⛔️ NO CODE")
             return JsonResponse({"error": "No code provided"}, status=400)
 
         token_data = {
@@ -59,18 +56,12 @@ class YouTubeCallbackView(View):
             "redirect_uri": settings.YOUTUBE_REDIRECT_URI,
             "grant_type": "authorization_code",
         }
-
-        print("📤 SENDING TOKEN REQUEST...")
         
-
         token_response = requests.post("https://oauth2.googleapis.com/token", data=token_data)
-        print(f"🎯 Redirect URI used for token exchange: {settings.YOUTUBE_REDIRECT_URI}")
 
         token_json = token_response.json()
-        print("✅ TOKEN RESPONSE:", token_json)
 
         if "access_token" not in token_json:
-            print("⛔️ NO ACCESS TOKEN IN RESPONSE")
             return JsonResponse({"error": "Failed to get token", "details": token_json}, status=400)
 
         access_token = token_json["access_token"]
@@ -80,19 +71,18 @@ class YouTubeCallbackView(View):
             headers={"Authorization": f"Bearer {access_token}"}
         )
 
-        print("👤 USERINFO STATUS:", userinfo_response.status_code)
-
         if userinfo_response.status_code != 200:
             return JsonResponse({"error": "Failed to get userinfo"}, status=400)
 
         userinfo = userinfo_response.json()
-        print("👤 USERINFO:", userinfo)
 
-        
         User = get_user_model()
-        user = User.objects.first()
-        print("💾 USING USER:", user)
-
+        user, created = User.objects.get_or_create(
+            email=userinfo.get("email"),
+            defaults={'full_name': userinfo.get("name")}
+        )
+        
+        login(request, user)
 
         YouTubeToken.objects.update_or_create(
             user=user,
@@ -103,14 +93,8 @@ class YouTubeCallbackView(View):
             }
         )
 
-        print("✅ TOKEN SAVED")
-
-        return JsonResponse({
-            "access_token": access_token,
-            "refresh_token": token_json.get("refresh_token"),
-            "email": userinfo.get("email"),
-            "name": userinfo.get("name"),
-        })
+        next_url = request.GET.get('next') or '/'
+        return redirect(next_url)
 
 
 class AddYouTubeChannelView(APIView):
@@ -162,3 +146,20 @@ class YouTubeStatsView(APIView):
             return JsonResponse({"error": str(e)}, status=400)
 
         return Response(YouTubeChannelStatsSerializer(obj).data)
+    
+    
+@login_required
+def youtube_dashboard(request):
+    try:
+        tokens = request.user.youtube_token
+    except YouTubeToken.DoesNotExist:
+        return render(request, 'youtube/no_tokens.html')  # update in future
+
+    try:
+        access_token = refresh_access_token(tokens)
+        channel_id = fetch_own_channel_id(access_token)
+        stats = update_channel_stats(access_token, channel_id)
+    except Exception as e:
+        return render(request, 'youtube/error.html', {'error': str(e)})
+
+    return render(request, 'youtube/dashboard.html', {'stats': stats})    

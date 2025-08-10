@@ -3,11 +3,12 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import RegisterSerializer, LoginSerializer, LogoutSerializer
 import requests
+from django.views import View
 from django.conf import settings
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, authenticate, login
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
@@ -27,6 +28,23 @@ class LoginView(generics.GenericAPIView):
             'access': str(refresh.access_token),
         })
 
+
+class LoginPageView(View):
+    def get(self, request):
+        return render(request, 'user_auth/login.html')
+
+    def post(self, request):
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+        user = authenticate(request, email=email, password=password)
+        if user is not None:
+            login(request, user)
+            next_url = request.GET.get('next') or '/'
+            return redirect(next_url)
+        else:
+            return render(request, 'user_auth/login.html', {'form': None, 'errors': True})
+        
+        
 class LogoutView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = LogoutSerializer
