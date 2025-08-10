@@ -30,7 +30,7 @@ class YouTubeChannelDetailView(generics.RetrieveAPIView):
 class YouTubeLoginView(View):
     def get(self, request):
         params = {
-            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_id": settings.YOUTUBE_CLIENT_ID,
             "redirect_uri": settings.YOUTUBE_REDIRECT_URI,
             "response_type": "code",
             "scope": "openid email profile https://www.googleapis.com/auth/youtube.readonly",
@@ -54,14 +54,18 @@ class YouTubeCallbackView(View):
 
         token_data = {
             "code": code,
-            "client_id": settings.GOOGLE_CLIENT_ID,
-            "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "client_id": settings.YOUTUBE_CLIENT_ID,
+            "client_secret": settings.YOUTUBE_CLIENT_SECRET,
+            "redirect_uri": settings.YOUTUBE_REDIRECT_URI,
             "grant_type": "authorization_code",
         }
 
         print("📤 SENDING TOKEN REQUEST...")
+        
+
         token_response = requests.post("https://oauth2.googleapis.com/token", data=token_data)
+        print(f"🎯 Redirect URI used for token exchange: {settings.YOUTUBE_REDIRECT_URI}")
+
         token_json = token_response.json()
         print("✅ TOKEN RESPONSE:", token_json)
 
@@ -85,14 +89,10 @@ class YouTubeCallbackView(View):
         print("👤 USERINFO:", userinfo)
 
         
-        from django.contrib.auth import get_user_model
         User = get_user_model()
         user = User.objects.first()
         print("💾 USING USER:", user)
 
-        from youtube.models import YouTubeToken
-        from django.utils import timezone
-        from datetime import timedelta
 
         YouTubeToken.objects.update_or_create(
             user=user,

@@ -39,5 +39,6 @@ class YouTubeChannelStatsSerializer(serializers.ModelSerializer):
             'title', 
             'subscriber_count', 
             'view_count', 
-            'video_count'
+            'video_count',
+            'last_updated'
             ]
