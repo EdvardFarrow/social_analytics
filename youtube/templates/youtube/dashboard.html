@@ -3,32 +3,160 @@
 {% block title %}YouTube Dashboard{% endblock %}
 
 {% block content %}
-    <h1>{{ stats.title }} — Chanel Stats</h1>
-    <ul>
-    <li>Followers: {{ stats.subscriber_count }}</li>
-    <li>Views: {{ stats.view_count }}</li>
-    <li>Video: {{ stats.video_count }}</li>
-    </ul>
+<h1>{{ stats.title }} — Channel Stats</h1>
 
-    <canvas id="statsChart" width="400" height="200"></canvas>
+<ul>
+  <li>Followers: {{ stats.subscriber_count }}</li>
+  <li>Views: {{ stats.view_count }}</li>
+  <li>Videos: {{ stats.video_count }}</li>
+</ul>
 
-    <script>
-    const ctx = document.getElementById('statsChart').getContext('2d');
-    const chart = new Chart(ctx, {
-        type: 'bar',
+<form id="filterForm" style="margin-bottom: 30px;">
+  <label for="date_from">From date:</label>
+  <input type="date" id="date_from" name="date_from">
+
+  <label for="date_to">To date:</label>
+  <input type="date" id="date_to" name="date_to">
+
+  <label for="min_views">Min views:</label>
+  <input type="number" id="min_views" name="min_views" min="0">
+
+  <label for="max_views">Max views:</label>
+  <input type="number" id="max_views" name="max_views" min="0">
+
+  <label for="sort_by">Sort by:</label>
+  <select id="sort_by" name="sort_by">
+    <option value="published_at">Date (oldest first)</option>
+    <option value="-published_at" selected>Date (newest first)</option>
+    <option value="views">Views (ascending)</option>
+    <option value="-views">Views (descending)</option>
+  </select>
+</form>
+
+<canvas id="trendChart" width="800" height="400" style="margin-bottom: 40px;"></canvas>
+
+<hr>
+
+<div id="videosContainer">
+  <p>Loading videos...</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  async function loadVideos() {
+    const form = document.getElementById('filterForm');
+    const formData = new FormData(form);
+    const params = new URLSearchParams(formData);
+
+    try {
+      const response = await fetch("{% url 'youtube_dashboard_videos' %}?" + params.toString(), {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch videos');
+
+      const data = await response.json();
+      const container = document.getElementById('videosContainer');
+
+      if (data.videos.length === 0) {
+        container.innerHTML = '<p>No videos found with these filters.</p>';
+        return;
+      }
+
+      let html = '';
+      for (const video of data.videos) {
+        html += `
+          <div class="video-card" style="border:1px solid #ccc; padding:10px; margin-bottom:10px; border-radius:5px;">
+            <h3 style="margin:0 0 5px;">${video.title}</h3>
+            <p style="margin:2px 0;"><strong>Published:</strong> ${video.published_at}</p>
+            <p style="margin:2px 0;"><strong>Views:</strong> ${video.views}</p>
+            <p style="margin:2px 0;"><strong>Likes:</strong> ${video.likes}</p>
+            <p style="margin:2px 0;"><strong>Comments:</strong> ${video.comments}</p>
+          </div>`;
+      }
+
+      container.innerHTML = html;
+
+    } catch (error) {
+      document.getElementById('videosContainer').innerHTML = `<p>Error loading videos: ${error.message}</p>`;
+    }
+  }
+
+  let trendChart;
+
+  async function loadTrends() {
+    const form = document.getElementById('filterForm');
+    const formData = new FormData(form);
+    const params = new URLSearchParams(formData);
+
+    try {
+      const response = await fetch("{% url 'youtube_trends_page' %}?" + params.toString(), {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch trend data');
+
+      const data = await response.json();
+      const ctx = document.getElementById('trendChart').getContext('2d');
+
+      if (trendChart) {
+        trendChart.destroy();
+      }
+
+      trendChart = new Chart(ctx, {
+        type: 'line',
         data: {
-            labels: ['Followers', 'Views', 'Video'],
-            datasets: [{
-            label: 'Stats',
-            data: [
-                {{ stats.subscriber_count }},
-                {{ stats.view_count }},
-                {{ stats.video_count }}
-            ],
-            backgroundColor: ['#ff6384', '#36a2eb', '#cc65fe'],
-        }]
+          labels: data.labels,
+          datasets: [
+            {
+              label: 'Views',
+              data: data.views,
+              borderColor: 'rgba(54, 162, 235, 1)',
+              backgroundColor: 'rgba(54, 162, 235, 0.2)',
+              fill: true,
+              tension: 0.3,
+            },
+            {
+              label: 'Subscribers',
+              data: data.subscribers,
+              borderColor: 'rgba(255, 99, 132, 1)',
+              backgroundColor: 'rgba(255, 99, 132, 0.2)',
+              fill: true,
+              tension: 0.3,
+            },
+            {
+              label: 'Likes',
+              data: data.likes,
+              borderColor: 'rgba(255, 206, 86, 1)',
+              backgroundColor: 'rgba(255, 206, 86, 0.2)',
+              fill: true,
+              tension: 0.3,
+            }
+          ]
         },
-        options: {}
-    });
-    </script>
+        options: {
+          responsive: true,
+          scales: {
+            x: { display: true, title: { display: true, text: 'Date' } },
+            y: { display: true, title: { display: true, text: 'Count' }, beginAtZero: true }
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Error loading trend data:', error);
+    }
+  }
+
+  document.getElementById('filterForm').addEventListener('change', () => {
+    loadVideos();
+    loadTrends();
+  });
+
+  window.addEventListener('DOMContentLoaded', () => {
+    loadVideos();
+    loadTrends();
+  });
+</script>
+
 {% endblock %}

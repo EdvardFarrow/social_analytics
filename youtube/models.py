@@ -22,6 +22,7 @@ class YouTubeVideo(models.Model):
     views = models.IntegerField(default=0)
     likes = models.IntegerField(default=0)
     comments = models.IntegerField(default=0)
+    
 
     def __str__(self):
         return self.title
