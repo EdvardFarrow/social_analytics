@@ -48,3 +48,36 @@ class YouTubeToken(models.Model):
     def __str__(self):
         return f"Tokens for {self.user.email}"
     
+
+class ChannelDailyStat(models.Model):
+    channel_id = models.ForeignKey('YouTubeChannel', null=True, on_delete=models.CASCADE, related_name='daily_stats')
+    date = models.DateField()  
+    subscribers = models.BigIntegerField(default=0)
+    views = models.BigIntegerField(default=0)
+    video_count = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('channel_id', 'date')
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.channel_id} — {self.date}"
+
+
+class VideoDailyStat(models.Model):
+    video_id = models.ForeignKey('YouTubeVideo', null=True, on_delete=models.CASCADE, related_name='daily_stats')
+    channel_id = models.CharField(null=True, max_length=50, db_index=True)
+    date = models.DateField(db_index=True)
+    title = models.CharField(null=True, max_length=225)
+    views = models.PositiveIntegerField()
+    likes = models.PositiveIntegerField()
+    comments = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('video_id', 'date')
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.video_id.video_id} — {self.date}"    

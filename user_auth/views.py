@@ -11,6 +11,11 @@ from rest_framework.decorators import api_view
 from django.contrib.auth import get_user_model, authenticate, login
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
+from django.utils import timezone
+from datetime import timedelta
+from accounts.models import GoogleCredentials
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
@@ -85,7 +90,6 @@ def google_callback(request):
     if not code:
         return Response({'error': 'No code provided'}, status=400)
 
-    
     token_url = 'https://oauth2.googleapis.com/token'
     token_data = {
         'code': code,
@@ -94,40 +98,64 @@ def google_callback(request):
         'redirect_uri': settings.GOOGLE_REDIRECT_URI,
         'grant_type': 'authorization_code',
     }
-    
+
     token_resp = requests.post(token_url, data=token_data)
-    
     if token_resp.status_code != 200:
-        return Response({'error': 'Failed to get token'}, status=400)
-    
-    access_token = token_resp.json().get('access_token')
-    
-    userinfo_url = "https://openidconnect.googleapis.com/v1/userinfo"
-    userinfo_resp = requests.get(
-        userinfo_url,
-        headers={'Authorization': f'Bearer {access_token}'},
-    )
+        return Response({'error': 'Failed to get token', 'details': token_resp.json()}, status=400)
 
-    
-    if userinfo_resp.status_code != 200:
-        return Response({'error': 'Failed to get userinfo'}, status=400)
+    token_json = token_resp.json()
+    id_token_str = token_json.get('id_token')
+    refresh_token_value = token_json.get('refresh_token')
+    access_token_value = token_json.get('access_token')
+    expires_in = token_json.get('expires_in', 3600)
 
-    user_data = userinfo_resp.json()
-    email = user_data.get('email')
-    name = user_data.get('name')
+    if not id_token_str:
+        return Response({'error': 'No id_token in token response'}, status=400)
 
-    
+    try:
+        id_info = id_token.verify_oauth2_token(id_token_str, google_requests.Request(), settings.GOOGLE_CLIENT_ID)
+    except ValueError:
+        return Response({'error': 'Invalid id_token'}, status=400)
+
+    email = id_info.get('email')
+    name = id_info.get('name', '')
+
+    if not email:
+        return Response({'error': 'Email not found in token'}, status=400)
+
     user, created = User.objects.get_or_create(email=email, defaults={'full_name': name})
-    
-    
+
+    # save or update GoogleCredentials
+    if refresh_token_value:  # refresh_token only 1st user accept
+        GoogleCredentials.objects.update_or_create(
+            user=user,
+            defaults={
+                'access_token': access_token_value,
+                'refresh_token': refresh_token_value,
+                'token_expiry': timezone.now() + timedelta(seconds=expires_in),
+                'token_uri': token_url,
+                'client_id': settings.GOOGLE_CLIENT_ID,
+                'client_secret': settings.GOOGLE_CLIENT_SECRET,
+                'scopes': settings.GOOGLE_SCOPES,
+            }
+        )
+    else:
+        # if refresh_token no, update only access_token & expiry, if GoogleCredentials 
+        creds = getattr(user, 'google_credentials', None)
+        if creds:
+            creds.access_token = access_token_value
+            creds.token_expiry = timezone.now() + timedelta(seconds=expires_in)
+            creds.save()
+
     refresh = RefreshToken.for_user(user)
+
     return Response({
         'access': str(refresh.access_token),
         'refresh': str(refresh),
         'user': {
             'id': user.id,
             'email': user.email,
-            'full_name': user.full_name,  
+            'full_name': user.full_name,
         }
     })
 

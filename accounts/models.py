@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils import timezone
 
@@ -39,3 +40,18 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
 
+
+User = get_user_model()
+
+class GoogleCredentials(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="google_credentials")
+    access_token = models.TextField()
+    refresh_token = models.TextField()
+    token_expiry = models.DateTimeField()
+    token_uri = models.TextField()
+    client_id = models.TextField()
+    client_secret = models.TextField()
+    scopes = models.JSONField()
+
+    def __str__(self):
+        return f"Google credentials for {self.user.email}"

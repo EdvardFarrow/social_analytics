@@ -7,13 +7,15 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponseRedirect
 from django.shortcuts import render, redirect
 from django.views import View
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 from urllib.parse import urlencode
 from .models import YouTubeChannel, YouTubeToken
 from .serializers import YouTubeChannelSerializer, YouTubeChannelStatsSerializer
-from .services import update_channel_stats, fetch_own_channel_id, refresh_access_token
+from .services import update_channel_stats, fetch_own_channel_id, refresh_access_token, update_channel_and_video_stats
+
 
 
 
@@ -163,3 +165,18 @@ def youtube_dashboard(request):
         return render(request, 'youtube/error.html', {'error': str(e)})
 
     return render(request, 'youtube/dashboard.html', {'stats': stats})    
+
+
+class UpdateYouTubeStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            user_token = YouTubeToken.objects.get(user=request.user)
+        except YouTubeToken.DoesNotExist:
+            return Response({"error": "YouTube tokens not found."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            update_channel_and_video_stats(user_token)
+            return Response({"message": "YouTube stats updated successfully"})
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
