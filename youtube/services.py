@@ -3,6 +3,9 @@ from .models import YouTubeChannel, YouTubeChannelStats, YouTubeToken, YouTubeVi
 from django.utils import timezone
 from datetime import timedelta, date
 from decouple import config
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_youtube_channel_stats(access_token, channel_id):
@@ -64,8 +67,8 @@ def refresh_access_token(user_token):
         return user_token.access_token
 
     data = {
-        'client_id': config('GOOGLE_CLIENT_ID'),
-        'client_secret': config('GOOGLE_CLIENT_SECRET'),
+        'client_id': config('YOUTUBE_CLIENT_ID'),
+        'client_secret': config('YOUTUBE_CLIENT_SECRET'),
         'refresh_token': user_token.refresh_token,
         'grant_type': 'refresh_token',
     }
@@ -85,7 +88,6 @@ def refresh_access_token(user_token):
 
 
 def update_channel_and_video_stats(user_token):
-
     access_token = refresh_access_token(user_token)
 
     channel_id = fetch_own_channel_id(access_token)
@@ -101,7 +103,7 @@ def update_channel_and_video_stats(user_token):
     )
 
     ChannelDailyStat.objects.update_or_create(
-        channel_id=channel,
+        channel_id=channel,  
         date=timezone.now().date(),
         defaults={
             'subscribers': channel_stats['subscriber_count'],
@@ -131,14 +133,13 @@ def update_channel_and_video_stats(user_token):
 
         data = response.json()
         videos.extend(data.get('items', []))
-
         next_page_token = data.get('nextPageToken')
         if not next_page_token:
             break
 
     video_ids = [video['id']['videoId'] for video in videos]
     for i in range(0, len(video_ids), 50):
-        batch_ids = video_ids[i:i+50]
+        batch_ids = video_ids[i:i + 50]
         stats_url = 'https://www.googleapis.com/youtube/v3/videos'
         stats_params = {
             'part': 'snippet,statistics',
@@ -157,24 +158,24 @@ def update_channel_and_video_stats(user_token):
             video_obj, created = YouTubeVideo.objects.update_or_create(
                 video_id=vid,
                 defaults={
-                    'channel': channel,
-                    'title': snippet['title'],
-                    'published_at': snippet['publishedAt'],
-                    'views': int(stats.get('viewCount', 0)),
-                    'likes': int(stats.get('likeCount', 0)),
-                    'comments': int(stats.get('commentCount', 0)),
+                    'channel': channel,  
+                    'title': snippet.get('title', ''),
+                    'published_at': snippet.get('publishedAt'),
+                    'views': int(stats.get('viewCount') or 0),
+                    'likes': int(stats.get('likeCount') or 0),
+                    'comments': int(stats.get('commentCount') or 0),
                 }
             )
 
             VideoDailyStat.objects.update_or_create(
-                video_id=video_obj,
+                video=video_obj,
                 date=timezone.now().date(),
                 defaults={
-                    'channel_id': channel_id,
-                    'title': snippet['title'],
-                    'views': int(stats.get('viewCount', 0)),
-                    'likes': int(stats.get('likeCount', 0)),
-                    'comments': int(stats.get('commentCount', 0)),
+                    'channel_id': channel,  
+                    'title': snippet.get('title', ''),
+                    'views': int(stats.get('viewCount') or 0),
+                    'likes': int(stats.get('likeCount') or 0),
+                    'comments': int(stats.get('commentCount') or 0),
                 }
             )
 

@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import YouTubeChannelListView, YouTubeChannelDetailView, YouTubeLoginView, YouTubeCallbackView, AddYouTubeChannelView, YouTubeStatsView, youtube_dashboard, youtube_dashboard_videos, UpdateYouTubeStatsView, trends_view, channel_trends_api
+from .views import YouTubeChannelListView, YouTubeChannelDetailView, YouTubeLoginView, YouTubeCallbackView, AddYouTubeChannelView, YouTubeStatsView, youtube_dashboard, youtube_dashboard_videos, UpdateYouTubeStatsView, trends_view, channel_trends
 
 urlpatterns = [
     path('channels/', YouTubeChannelListView.as_view(), name='youtube-channel-list'),
@@ -12,7 +12,7 @@ urlpatterns = [
     path('update-stats/', UpdateYouTubeStatsView.as_view(), name='update_youtube_stats'),
     path('dashboard/videos/', youtube_dashboard_videos, name='youtube_dashboard_videos'),
     path('trends/', trends_view, name='youtube_trends_page'),  
-    path('trends/data/', channel_trends_api, name='youtube_channel_trends'),
+    path('trends/data/', channel_trends, name='youtube_channel_trends'),
     
 ]
 

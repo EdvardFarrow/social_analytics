@@ -1,15 +1,17 @@
 import requests
-from datetime import timedelta, date
+import json
+from datetime import timedelta, date, datetime
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.conf import settings
 from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse, HttpResponseRedirect
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
 from django.views.decorators.http import require_GET
 from django.utils.dateparse import parse_date
+from django.utils.safestring import mark_safe
 from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -18,8 +20,10 @@ from urllib.parse import urlencode
 
 from .models import YouTubeChannel, YouTubeToken, YouTubeVideo, ChannelDailyStat
 from .serializers import YouTubeChannelSerializer, YouTubeChannelStatsSerializer
-from .services import update_channel_stats, fetch_own_channel_id, refresh_access_token, update_channel_and_video_stats
+from .services import update_channel_stats, fetch_own_channel_id, refresh_access_token, update_channel_and_video_stats, fetch_youtube_channel_stats
+import logging
 
+logger = logging.getLogger(__name__)
 
 
 
@@ -231,41 +235,7 @@ def youtube_dashboard_videos(request):
     return JsonResponse({'videos': videos_data})
 
 
-@login_required
-@require_GET
-def channel_trends(request):
-    channel_id = request.GET.get('channel_id')
-    if not channel_id:
-        return JsonResponse({'error': 'channel_id is required'}, status=400)
 
-    date_from_str = request.GET.get('date_from')
-    date_to_str = request.GET.get('date_to')
-
-    if not date_from_str:
-        date_from = date.today() - timedelta(days=30)
-    else:
-        date_from = parse_date(date_from_str)
-        if date_from is None:
-            return JsonResponse({'error': 'Invalid date_from format'}, status=400)
-
-    if not date_to_str:
-        date_to = date.today()
-    else:
-        date_to = parse_date(date_to_str)
-        if date_to is None:
-            return JsonResponse({'error': 'Invalid date_to format'}, status=400)
-
-    qs = ChannelDailyStat.objects.filter(channel__channel_id=channel_id, date__range=(date_from, date_to)).order_by('date')
-
-    stats = qs.values('date', 'subscribers', 'views', 'video_count')
-
-    data = {
-        'dates': [s['date'].isoformat() for s in stats],
-        'subscribers': [s['subscribers'] for s in stats],
-        'views': [s['views'] for s in stats],
-        'video_count': [s['video_count'] for s in stats],
-    }
-    return JsonResponse(data)
 
 
 @login_required
@@ -280,37 +250,44 @@ def trends_view(request):
     return render(request, 'youtube/trends.html', context)
 
 
+from django.utils.safestring import mark_safe
+import json
+
 @login_required
-@require_GET
-def channel_trends_api(request):
-    channel_id = request.GET.get('channel_id')
-    if not channel_id:
-        return JsonResponse({'error': 'channel_id is required'}, status=400)
+def channel_trends(request):
+    user_channels = request.user.youtube_channels.all()
+    if not user_channels.exists():
+        return JsonResponse({'error': 'No channels found for this user'}, status=404)
 
-    date_from_str = request.GET.get('date_from')
-    date_to_str = request.GET.get('date_to')
+    channel = user_channels.first()
 
-    date_from = parse_date(date_from_str) if date_from_str else None
-    date_to = parse_date(date_to_str) if date_to_str else None
-
-    try:
-        channel = YouTubeChannel.objects.get(channel_id=channel_id)
-    except YouTubeChannel.DoesNotExist:
-        return JsonResponse({'error': 'Channel not found'}, status=404)
-
-    qs = ChannelDailyStat.objects.filter(channel_id=channel)
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
 
     if date_from:
-        qs = qs.filter(date__gte=date_from)
+        date_from = timezone.datetime.strptime(date_from, '%Y-%m-%d').date()
+    else:
+        date_from = date.today() - timedelta(days=30)
+
     if date_to:
-        qs = qs.filter(date__lte=date_to)
+        date_to = timezone.datetime.strptime(date_to, '%Y-%m-%d').date()
+    else:
+        date_to = date.today()
 
-    stats = qs.order_by('date').values('date', 'subscribers', 'views', 'video_count')
+    stats_qs = ChannelDailyStat.objects.filter(
+        channel_id=channel,  
+        date__range=[date_from, date_to]
+    ).order_by('date')
 
-    data = {
-        'dates': [s['date'].isoformat() for s in stats],
-        'subscribers': [s['subscribers'] for s in stats],
-        'views': [s['views'] for s in stats],
-        'video_count': [s['video_count'] for s in stats],
-    }
-    return JsonResponse(data)
+    dates = [stat.date.isoformat() for stat in stats_qs]
+    stats = [
+        {
+            'views': stat.views,
+            'subscribers': stat.subscribers,
+            'video_count': stat.video_count
+        }
+        for stat in stats_qs
+    ]
+
+    return JsonResponse({'channel_title': channel.title, 'dates': dates, 'stats': stats})
+

@@ -35,7 +35,6 @@
 
     const form = document.getElementById('filterForm');
     const formData = new FormData(form);
-
     const params = new URLSearchParams(formData);
 
     const channelId = formData.get('channel_id');
@@ -94,18 +93,10 @@
 
       const chartOptions = {
         responsive: true,
-        interaction: {
-          mode: 'index',
-          intersect: false,
-        },
+        interaction: { mode: 'index', intersect: false },
         stacked: false,
         scales: {
-          y: {
-            beginAtZero: true,
-            ticks: {
-              precision: 0
-            }
-          }
+          y: { beginAtZero: true, ticks: { precision: 0 } }
         }
       };
 
@@ -114,11 +105,7 @@
         trendsChart.options = chartOptions;
         trendsChart.update();
       } else {
-        trendsChart = new Chart(ctx, {
-          type: 'line',
-          data: chartData,
-          options: chartOptions
-        });
+        trendsChart = new Chart(ctx, { type: 'line', data: chartData, options: chartOptions });
       }
 
     } catch (error) {
