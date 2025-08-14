@@ -1,7 +1,7 @@
 import requests
 from .models import YouTubeChannel, YouTubeChannelStats, YouTubeToken, YouTubeVideo, ChannelDailyStat, VideoDailyStat
 from django.utils import timezone
-from datetime import timedelta, date
+from datetime import timedelta, date, datetime
 from decouple import config
 import logging
 
@@ -168,11 +168,9 @@ def update_channel_and_video_stats(user_token):
             )
 
             VideoDailyStat.objects.update_or_create(
-                video=video_obj,
+                video_id=video_obj, 
                 date=timezone.now().date(),
                 defaults={
-                    'channel_id': channel,  
-                    'title': snippet.get('title', ''),
                     'views': int(stats.get('viewCount') or 0),
                     'likes': int(stats.get('likeCount') or 0),
                     'comments': int(stats.get('commentCount') or 0),
@@ -181,3 +179,106 @@ def update_channel_and_video_stats(user_token):
 
 def update_channel_stats(access_token, channel_id):
     return save_channel_daily_snapshot(access_token, channel_id)
+
+
+def fetch_new_channel_videos(user_token):
+    access_token = refresh_access_token(user_token)
+
+    url_channel = "https://www.googleapis.com/youtube/v3/channels"
+    params = {"part": "snippet,statistics", "mine": "true"}
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = requests.get(url_channel, params=params, headers=headers)
+    resp.raise_for_status()
+    channel_data = resp.json()["items"][0]
+    channel_id = channel_data["id"]
+
+    channel, _ = YouTubeChannel.objects.update_or_create(
+        channel_id=channel_id,
+        defaults={"title": channel_data["snippet"]["title"], "user": user_token.user},
+    )
+
+    stats = channel_data["statistics"]
+    ChannelDailyStat.objects.update_or_create(
+        channel_id=channel,
+        date=timezone.now().date(),
+        defaults={
+            "subscribers": int(stats.get("subscriberCount", 0)),
+            "views": int(stats.get("viewCount", 0)),
+            "video_count": int(stats.get("videoCount", 0)),
+        }
+    )
+
+    last_video = YouTubeVideo.objects.filter(channel=channel).order_by("-published_at").first()
+    last_published_at = last_video.published_at if last_video else None
+
+    videos = []
+    next_page_token = None
+
+    while True:
+        url_search = "https://www.googleapis.com/youtube/v3/search"
+        search_params = {
+            "part": "snippet",
+            "channelId": channel_id,
+            "maxResults": 50,
+            "order": "date",
+            "type": "video",
+        }
+        if next_page_token:
+            search_params["pageToken"] = next_page_token
+
+        r = requests.get(url_search, headers=headers, params=search_params)
+        r.raise_for_status()
+        data = r.json()
+        items = data.get("items", [])
+
+        for item in items:
+            published_at = datetime.fromisoformat(item["snippet"]["publishedAt"].replace("Z", "+00:00"))
+            if last_published_at and published_at <= last_published_at:
+                next_page_token = None  
+                break
+            videos.append(item)
+
+        next_page_token = data.get("nextPageToken")
+        if not next_page_token:
+            break
+
+    if not videos:
+        return "No new videos to fetch."
+
+    video_ids = [v["id"]["videoId"] for v in videos]
+    for i in range(0, len(video_ids), 50):
+        batch_ids = video_ids[i:i + 50]
+        stats_url = "https://www.googleapis.com/youtube/v3/videos"
+        stats_params = {"part": "snippet,statistics", "id": ",".join(batch_ids)}
+        stats_resp = requests.get(stats_url, headers=headers, params=stats_params)
+        stats_resp.raise_for_status()
+        items = stats_resp.json().get("items", [])
+
+        for item in items:
+            vid = item["id"]
+            snippet = item["snippet"]
+            stats = item.get("statistics", {})
+
+            video_obj, _ = YouTubeVideo.objects.update_or_create(
+                video_id=vid,
+                defaults={
+                    "channel": channel,
+                    "title": snippet.get("title", ""),
+                    "published_at": snippet.get("publishedAt"),
+                    "views": int(stats.get("viewCount", 0)),
+                    "likes": int(stats.get("likeCount", 0)),
+                    "comments": int(stats.get("commentCount", 0)),
+                }
+            )
+
+            VideoDailyStat.objects.update_or_create(
+                video_id=video_obj,
+                date=timezone.now().date(),
+                defaults={
+                    "views": int(stats.get("viewCount", 0)),
+                    "likes": int(stats.get("likeCount", 0)),
+                    "comments": int(stats.get("commentCount", 0)),
+                }
+            )
+
+    return f"Fetched {len(video_ids)} new videos from channel {channel.title}"

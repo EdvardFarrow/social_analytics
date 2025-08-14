@@ -1,7 +1,9 @@
 import requests
 import json
-from datetime import timedelta, date, datetime
+
+from datetime import timedelta, date, datetime, time
 from django.utils import timezone
+from django.utils.timezone import make_aware, localtime
 from django.utils.dateparse import parse_date
 from django.conf import settings
 from django.contrib.auth import get_user_model, login
@@ -10,6 +12,8 @@ from django.http import JsonResponse, HttpResponseRedirect
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views import View
 from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
 from django.utils.dateparse import parse_date
 from django.utils.safestring import mark_safe
 from rest_framework import generics, permissions, status
@@ -18,7 +22,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from urllib.parse import urlencode
 
-from .models import YouTubeChannel, YouTubeToken, YouTubeVideo, ChannelDailyStat
+from .models import YouTubeChannel, YouTubeToken, YouTubeVideo, ChannelDailyStat, YouTubeChannelStats
 from .serializers import YouTubeChannelSerializer, YouTubeChannelStatsSerializer
 from .services import update_channel_stats, fetch_own_channel_id, refresh_access_token, update_channel_and_video_stats, fetch_youtube_channel_stats
 import logging
@@ -175,21 +179,28 @@ class UpdateYouTubeStatsView(APIView):
 
 @login_required
 def youtube_dashboard(request):
-    try:
-        tokens = request.user.youtube_token
-    except YouTubeToken.DoesNotExist:
-        return render(request, 'youtube/no_tokens.html')  # update in future
 
-    try:
-        access_token = refresh_access_token(tokens)
-        channel_id = fetch_own_channel_id(access_token)
-        stats = update_channel_stats(access_token, channel_id)
-        videos = YouTubeVideo.objects.filter(channel__user=request.user).order_by('-published_at')
-    except Exception as e:
-        return render(request, 'youtube/error.html', {'error': str(e)})
+    user_channels = request.user.youtube_channels.all()
+    channel_ids = [c.channel_id for c in user_channels]
 
-    return render(request, 'youtube/dashboard.html', {'stats': stats, 'videos': videos})    
+    stats = YouTubeChannelStats.objects.filter(channel_id__in=channel_ids).order_by('title')
 
+    videos = YouTubeVideo.objects.filter(channel__user=request.user).order_by('-published_at')
+
+    return render(request, 'youtube/dashboard.html', {'stats_list': stats, 'videos': videos})
+
+
+
+@login_required
+def trends_view(request):
+    user_channels = request.user.youtube_channels.all()
+    default_channel_id = user_channels[0].channel_id if user_channels else ''
+    context = {
+        'default_channel_id': default_channel_id,
+        'default_date_from': (timezone.now() - timedelta(days=30)).date().isoformat(),
+        'default_date_to': timezone.now().date().isoformat(),
+    }
+    return render(request, 'youtube/trends.html', context)
 
 @login_required
 def youtube_dashboard_videos(request):
@@ -205,11 +216,14 @@ def youtube_dashboard_videos(request):
     if date_from:
         date_from_parsed = parse_date(date_from)
         if date_from_parsed:
-            videos = videos.filter(published_at__date__gte=date_from_parsed)
+            dt_from = make_aware(datetime.combine(date_from_parsed, time.min))
+            videos = videos.filter(published_at__gte=dt_from)
     if date_to:
         date_to_parsed = parse_date(date_to)
         if date_to_parsed:
-            videos = videos.filter(published_at__date__lte=date_to_parsed)
+            dt_to = make_aware(datetime.combine(date_to_parsed, time.max))
+            videos = videos.filter(published_at__lte=dt_to)
+
     if min_views and min_views.isdigit():
         videos = videos.filter(views__gte=int(min_views))
     if max_views and max_views.isdigit():
@@ -224,7 +238,7 @@ def youtube_dashboard_videos(request):
     videos_data = [
         {
             'title': v.title,
-            'published_at': v.published_at.strftime('%Y-%m-%d'),
+            'published_at': localtime(v.published_at).strftime('%Y-%m-%d %H:%M'),
             'views': v.views,
             'likes': v.likes,
             'comments': v.comments,
@@ -235,59 +249,133 @@ def youtube_dashboard_videos(request):
     return JsonResponse({'videos': videos_data})
 
 
-
-
-
 @login_required
-def trends_view(request):
-    user_channels = request.user.youtube_channels.all()
-    default_channel_id = user_channels[0].channel_id if user_channels else ''
-    context = {
-        'default_channel_id': default_channel_id,
-        'default_date_from': (timezone.now() - timedelta(days=30)).date().isoformat(),
-        'default_date_to': timezone.now().date().isoformat(),
-    }
-    return render(request, 'youtube/trends.html', context)
+def youtube_trends_data(request):
+    from youtube.models import ChannelDailyStat, YouTubeChannel
+    from django.utils.dateparse import parse_date
+    from datetime import timedelta, date
 
-
-from django.utils.safestring import mark_safe
-import json
-
-@login_required
-def channel_trends(request):
-    user_channels = request.user.youtube_channels.all()
-    if not user_channels.exists():
-        return JsonResponse({'error': 'No channels found for this user'}, status=404)
-
-    channel = user_channels.first()
+    user_channels = YouTubeChannel.objects.filter(user=request.user)
+    stats = ChannelDailyStat.objects.filter(channel_id__in=user_channels)
 
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
 
     if date_from:
-        date_from = timezone.datetime.strptime(date_from, '%Y-%m-%d').date()
-    else:
-        date_from = date.today() - timedelta(days=30)
-
+        date_from_parsed = parse_date(date_from)
+        if date_from_parsed:
+            stats = stats.filter(date__gte=date_from_parsed)
     if date_to:
-        date_to = timezone.datetime.strptime(date_to, '%Y-%m-%d').date()
-    else:
-        date_to = date.today()
+        date_to_parsed = parse_date(date_to)
+        if date_to_parsed:
+            stats = stats.filter(date__lte=date_to_parsed)
+
+    data_by_date = {}
+    for stat in stats:
+        key = stat.date.isoformat()
+        if key not in data_by_date:
+            data_by_date[key] = {'views': 0, 'subscribers': 0, 'likes': 0}
+        data_by_date[key]['views'] += stat.views
+        data_by_date[key]['subscribers'] += stat.subscribers
+        data_by_date[key]['likes'] += stat.likes
+
+    sorted_dates = sorted(data_by_date.keys())
+    labels = sorted_dates
+    views = [data_by_date[d]['views'] for d in sorted_dates]
+    subscribers = [data_by_date[d]['subscribers'] for d in sorted_dates]
+    likes = [data_by_date[d]['likes'] for d in sorted_dates]
+
+    return JsonResponse({'labels': labels, 'views': views, 'subscribers': subscribers, 'likes': likes})
+
+
+
+@login_required
+@require_GET
+def channel_trends(request):
+    user_channels = YouTubeChannel.objects.filter(user=request.user)
+    if not user_channels.exists():
+        return JsonResponse({'error': 'No channels found for this user'}, status=404)
+
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+
+    if not date_from:
+        date_from = (date.today() - timedelta(days=30)).isoformat()
+    if not date_to:
+        date_to = date.today().isoformat()
 
     stats_qs = ChannelDailyStat.objects.filter(
-        channel_id=channel,  
+        channel_id__in=user_channels,
         date__range=[date_from, date_to]
     ).order_by('date')
 
     dates = [stat.date.isoformat() for stat in stats_qs]
     stats = [
-        {
-            'views': stat.views,
-            'subscribers': stat.subscribers,
-            'video_count': stat.video_count
-        }
+        {'views': stat.views, 'subscribers': stat.subscribers, 'video_count': stat.video_count}
         for stat in stats_qs
     ]
 
-    return JsonResponse({'channel_title': channel.title, 'dates': dates, 'stats': stats})
+    context = {
+        'dates_json': mark_safe(json.dumps(dates)),
+        'stats_json': mark_safe(json.dumps(stats)),
+    }
 
+    if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        return JsonResponse({'dates': dates, 'stats': stats})
+
+    return render(request, "youtube/trends_data.html", context)
+
+
+
+
+def update_all_videos(user_token: YouTubeToken):
+    access_token = refresh_access_token(user_token)
+
+    try:
+        channel = YouTubeChannel.objects.get(user=user_token.user)
+    except YouTubeChannel.DoesNotExist:
+        raise Exception("Канал для этого пользователя не найден. Сначала нужно подтянуть канал.")
+
+    videos = YouTubeVideo.objects.filter(channel=channel)
+
+    video_ids = [video.video_id for video in videos]
+    for i in range(0, len(video_ids), 50):
+        batch_ids = video_ids[i:i + 50]
+
+        stats_url = 'https://www.googleapis.com/youtube/v3/videos'
+        stats_params = {
+            'part': 'statistics',
+            'id': ','.join(batch_ids)
+        }
+        headers = {'Authorization': f'Bearer {access_token}'}
+        stats_resp = requests.get(stats_url, headers=headers, params=stats_params)
+        if stats_resp.status_code != 200:
+            raise Exception(f"Failed to fetch video stats: {stats_resp.text}")
+
+        stats_data = stats_resp.json()
+        for item in stats_data.get('items', []):
+            vid_id = item['id']
+            stats = item.get('statistics', {})
+            try:
+                video_obj = YouTubeVideo.objects.get(video_id=vid_id)
+                video_obj.views = int(stats.get('viewCount', 0))
+                video_obj.likes = int(stats.get('likeCount', 0))
+                video_obj.comments = int(stats.get('commentCount', 0))
+                video_obj.save(update_fields=['views', 'likes', 'comments'])
+            except YouTubeVideo.DoesNotExist:
+                continue  
+
+    return {"message": f"Updated stats for {len(video_ids)} videos."}
+    
+    
+@login_required
+@require_POST
+def youtube_refresh_all(request):
+    try:
+        token = YouTubeToken.objects.get(user=request.user)
+        result = update_all_videos(token)
+        return JsonResponse(result)
+    except YouTubeToken.DoesNotExist:
+        return JsonResponse({"message": "No YouTube token found for this user."}, status=400)
+    except Exception as e:
+        return JsonResponse({"message": str(e)}, status=500)
