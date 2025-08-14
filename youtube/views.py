@@ -22,7 +22,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from urllib.parse import urlencode
 
-from .models import YouTubeChannel, YouTubeToken, YouTubeVideo, ChannelDailyStat, YouTubeChannelStats
+from .models import YouTubeChannel, YouTubeToken, YouTubeVideo, ChannelDailyStat, YouTubeChannelStats, VideoDailyStat
 from .serializers import YouTubeChannelSerializer, YouTubeChannelStatsSerializer
 from .services import update_channel_stats, fetch_own_channel_id, refresh_access_token, update_channel_and_video_stats, fetch_youtube_channel_stats
 import logging
@@ -144,36 +144,22 @@ class AddYouTubeChannelView(APIView):
     
     
 class YouTubeStatsView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        try:
-            tokens = request.user.youtube_token
-        except YouTubeToken.DoesNotExist:
-            return JsonResponse({"error": "YouTube tokens not found"}, status=400)
-
-        try:
-            access_token = refresh_access_token(tokens)
-            channel_id = fetch_own_channel_id(access_token)
-            obj = update_channel_stats(access_token, channel_id)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=400)
-
+        user_token = request.user.youtube_token
+        access_token = refresh_access_token(user_token)
+        channel_id = fetch_own_channel_id(access_token)
+        obj = update_channel_stats(access_token, channel_id)
         return Response(YouTubeChannelStatsSerializer(obj).data)
     
 class UpdateYouTubeStatsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        try:
-            user_token = YouTubeToken.objects.get(user=request.user)
-        except YouTubeToken.DoesNotExist:
-            return Response({"error": "YouTube tokens not found."}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            update_channel_and_video_stats(user_token)
-            return Response({"message": "YouTube stats updated successfully"})
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        user_token = request.user.youtube_token
+        update_channel_and_video_stats(user_token)
+        return Response({"message": "YouTube stats updated successfully"})
 
 
 
@@ -379,3 +365,73 @@ def youtube_refresh_all(request):
         return JsonResponse({"message": "No YouTube token found for this user."}, status=400)
     except Exception as e:
         return JsonResponse({"message": str(e)}, status=500)
+    
+    
+    
+@login_required
+@require_GET
+def youtube_video_trends(request):
+    user = request.user
+    channel_ids = YouTubeChannel.objects.filter(user=user).values_list('id', flat=True)
+
+    date_from = parse_date(request.GET.get('date_from')) or (timezone.now().date() - timedelta(days=30))
+    date_to = parse_date(request.GET.get('date_to')) or timezone.now().date()
+
+    videos_qs = YouTubeVideo.objects.filter(
+        channel_id__in=channel_ids,
+        published_at__date__range=[date_from, date_to]
+    )
+
+    video_ids = videos_qs.values_list('id', flat=True)
+
+    stats_qs = VideoDailyStat.objects.filter(
+        video_id__in=video_ids,
+        date__range=[date_from, date_to]
+    ).order_by('date')
+
+    data_by_date = {}
+    for stat in stats_qs:
+        key = stat.date.isoformat()
+        if key not in data_by_date:
+            data_by_date[key] = {'views': 0, 'likes': 0, 'comments': 0}
+        data_by_date[key]['views'] += stat.views
+        data_by_date[key]['likes'] += stat.likes
+        data_by_date[key]['comments'] += stat.comments
+
+    sorted_dates = sorted(data_by_date.keys())
+    views_data = [data_by_date[d]['views'] for d in sorted_dates]
+    likes_data = [data_by_date[d]['likes'] for d in sorted_dates]
+    comments_data = [data_by_date[d]['comments'] for d in sorted_dates]
+
+    channel_stats_qs = ChannelDailyStat.objects.filter(
+        channel_id__in=channel_ids,
+        date__range=[date_from, date_to]
+    ).order_by('date')
+
+    subscribers_new = 0
+    subscribers_lost = 0
+    total_subscribers = 0
+    prev_total = None
+
+    for stat in channel_stats_qs:
+        total = stat.subscribers
+        if prev_total is not None:
+            delta = total - prev_total
+            if delta >= 0:
+                subscribers_new += delta
+            else:
+                subscribers_lost += -delta
+        prev_total = total
+        total_subscribers = total
+
+    return JsonResponse({
+        'dates': sorted_dates,
+        'views': views_data,
+        'likes': likes_data,
+        'comments': comments_data,
+        'subscribers': {
+            'new': subscribers_new,
+            'lost': subscribers_lost,
+            'total': total_subscribers
+        }
+    })

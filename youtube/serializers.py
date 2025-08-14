@@ -18,6 +18,8 @@ class YouTubeVideoSerializer(serializers.ModelSerializer):
 
 class YouTubeChannelSerializer(serializers.ModelSerializer):
     videos = YouTubeVideoSerializer(many=True, read_only=True)
+    new_subs = serializers.IntegerField()
+    lost_subs = serializers.IntegerField()
 
     class Meta:
         model = YouTubeChannel
@@ -28,6 +30,8 @@ class YouTubeChannelSerializer(serializers.ModelSerializer):
             'description',
             'created_at',
             'videos',
+            'new_subs',
+            'lost_subs',
         ]
 
 
