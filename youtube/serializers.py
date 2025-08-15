@@ -1,6 +1,10 @@
 from rest_framework import serializers
-from .models import YouTubeChannel, YouTubeVideo, YouTubeChannelStats
-
+from .models import (
+    YouTubeChannel, 
+    YouTubeVideo, 
+    YoutubeDailyStats,
+    YoutubeAudienceDemographics,
+)
 
 class YouTubeVideoSerializer(serializers.ModelSerializer):
     class Meta:
@@ -15,12 +19,35 @@ class YouTubeVideoSerializer(serializers.ModelSerializer):
             'comments',
         ]
 
+# Сериализатор для ежедневной статистики канала
+class YoutubeDailyStatsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = YoutubeDailyStats
+        fields = [
+            'date',
+            'subscribers_gained',
+            'subscribers_lost',
+            'views',
+            'likes',
+            'comments',
+            'estimated_minutes_watched',
+        ]
+
+# Сериализатор для демографии аудитории
+class YoutubeAudienceDemographicsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = YoutubeAudienceDemographics
+        fields = [
+            'age_group',
+            'gender',
+            'viewer_percentage',
+        ]
 
 class YouTubeChannelSerializer(serializers.ModelSerializer):
     videos = YouTubeVideoSerializer(many=True, read_only=True)
-    new_subs = serializers.IntegerField()
-    lost_subs = serializers.IntegerField()
-
+    daily_stats = YoutubeDailyStatsSerializer(many=True, read_only=True)
+    demographics = YoutubeAudienceDemographicsSerializer(many=True, read_only=True)
+    
     class Meta:
         model = YouTubeChannel
         fields = [
@@ -30,19 +57,6 @@ class YouTubeChannelSerializer(serializers.ModelSerializer):
             'description',
             'created_at',
             'videos',
-            'new_subs',
-            'lost_subs',
+            'daily_stats',
+            'demographics',
         ]
-
-
-class YouTubeChannelStatsSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = YouTubeChannelStats
-        fields = [
-            'channel_id', 
-            'title', 
-            'subscriber_count', 
-            'view_count', 
-            'video_count',
-            'last_updated'
-            ]

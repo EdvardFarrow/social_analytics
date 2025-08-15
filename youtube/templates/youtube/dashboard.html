@@ -1,168 +1,64 @@
-{% extends 'youtube/base.html' %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Dashboard</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .dashboard-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .chart-container { background: #f4f4f4; padding: 20px; border-radius: 8px; }
+        .table-container { background: #f4f4f4; padding: 20px; border-radius: 8px; }
+        h1 { color: #cc0000; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    </style>
+</head>
+<body>
+    <h1>Панель управления YouTube-каналом</h1>
 
-{% block title %}YouTube Dashboard{% endblock %}
+    <div class="dashboard-container">
+        
+        <div class="chart-container">
+            <h2>Динамика подписчиков и просмотров</h2>
+            <p>Данные за последние 30 дней.</p>
+            <canvas id="channelStatsChart"></canvas>
+        </div>
 
-{% block content %}
-<h1>YouTube Dashboard</h1>
+        <div class="chart-container">
+            <h2>Демография аудитории</h2>
+            <p>Распределение по возрасту и полу.</p>
+            <canvas id="demographicsChart"></canvas>
+        </div>
 
-{% for stats in stats_list %}
-  <div style="display:flex; align-items:center; justify-content: space-between; margin-bottom:20px; border:1px solid #ccc; padding:10px; border-radius:5px;">
-    <div>
-      <h2>{{ stats.title }} — Channel Stats</h2>
-      <ul style="margin:0; padding-left:20px;">
-        <li>Subscribers: {{ stats.subscriber_count }}</li>
-        <li>Views: {{ stats.view_count }}</li>
-        <li>Videos: {{ stats.video_count }}</li>
-      </ul>
+        <div class="table-container" style="grid-column: 1 / 3;">
+            <h2>Статистика по видео</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Название видео</th>
+                        <th>Дата публикации</th>
+                        <th>Просмотры</th>
+                        <th>Лайки</th>
+                        <th>Комментарии</th>
+                    </tr>
+                </thead>
+                <tbody id="videosTableBody">
+                    </tbody>
+            </table>
+        </div>
+
     </div>
-    <div style="text-align:right;">
-      <label>From: <input type="date" id="date_from" value="{{ default_date_from }}"></label>
-      <label>To: <input type="date" id="date_to" value="{{ default_date_to }}"></label>
-      <div style="margin-top:5px;">
-        <strong>New:</strong> <span id="subs_new">0</span>,
-        <strong>Lost:</strong> <span id="subs_lost">0</span>,
-        <strong>Total:</strong> <span id="subs_total">0</span>
-      </div>
-    </div>
-  </div>
-{% endfor %}
 
-<canvas id="trendChart" width="800" height="250" style="margin-bottom: 30px;"></canvas>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<div id="videosContainer">
-  <p>Loading videos...</p>
-</div>
-<button id="loadMoreBtn" style="display:none; margin-top:10px; padding:6px 12px; border-radius:4px; background:#2196F3; color:white; border:none; cursor:pointer;">
-    Load more
-</button>
+    <script>
+        window.channelTrendsUrl = "{% url 'youtube_channel_trends' %}";
+        window.videoTrendsUrl = "{% url 'youtube_video_trends' %}";
+    </script>
+    
+    <script src="{% static 'youtube/js/dashboard.js' %}"></script>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-let trendChart;
-let videosData = [];
-let videosShown = 0;
-const videosPerPage = 10;
-
-async function loadTrends() {
-    const dateFrom = document.getElementById('date_from').value;
-    const dateTo = document.getElementById('date_to').value;
-
-    try {
-        const response = await fetch("{% url 'youtube_video_trends' %}?date_from=" + dateFrom + "&date_to=" + dateTo, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        const data = await response.json();
-
-        // Обновляем блок с подписчиками
-        document.getElementById('subs_new').textContent = data.subscribers.new;
-        document.getElementById('subs_lost').textContent = data.subscribers.lost;
-        document.getElementById('subs_total').textContent = data.subscribers.total;
-
-        const ctx = document.getElementById('trendChart').getContext('2d');
-        if (trendChart) trendChart.destroy();
-
-        trendChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.dates,
-                datasets: [{
-                    label: 'Views',
-                    data: data.views,
-                    borderColor: 'rgba(54, 162, 235, 1)',
-                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                    fill: true,
-                    tension: 0.3,
-                    pointHoverRadius: 6,
-                    pointHoverBackgroundColor: 'rgba(255, 206, 86, 1)',
-                    pointHoverBorderWidth: 2,
-                    pointHoverBorderColor: 'rgba(255, 206, 86, 1)',
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const idx = context.dataIndex;
-                                const likes = data.likes[idx];
-                                const comments = data.comments[idx];
-                                return `Views: ${context.formattedValue}, Likes: ${likes}, Comments: ${comments}`;
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: { title: { display: true, text: 'Date' } },
-                    y: { beginAtZero: true, title: { display: true, text: 'Views' } }
-                }
-            }
-        });
-
-    } catch (error) {
-        console.error('Error loading trend data:', error);
-    }
-}
-
-async function loadVideos(reset=false) {
-    if (reset) videosShown = 0;
-
-    const dateFrom = document.getElementById('date_from').value;
-    const dateTo = document.getElementById('date_to').value;
-
-    try {
-        const response = await fetch("{% url 'youtube_dashboard_videos' %}?date_from=" + dateFrom + "&date_to=" + dateTo, {
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        const data = await response.json();
-        videosData = data.videos;
-        renderVideos();
-    } catch (error) {
-        document.getElementById('videosContainer').innerHTML = `<p>Error loading videos: ${error.message}</p>`;
-    }
-}
-
-function renderVideos() {
-    const container = document.getElementById('videosContainer');
-    const end = Math.min(videosShown + videosPerPage, videosData.length);
-    let html = videosShown === 0 ? '' : container.innerHTML;
-
-    for (let i = videosShown; i < end; i++) {
-        const v = videosData[i];
-        html += `
-        <div class="video-card" style="border:1px solid #ccc; padding:10px; margin-bottom:10px; border-radius:5px;">
-          <h3 style="margin:0 0 5px;">${v.title}</h3>
-          <p style="margin:2px 0;"><strong>Published:</strong> ${v.published_at}</p>
-          <p style="margin:2px 0;"><strong>Views:</strong> ${v.views}</p>
-          <p style="margin:2px 0;"><strong>Likes:</strong> ${v.likes}</p>
-          <p style="margin:2px 0;"><strong>Comments:</strong> ${v.comments}</p>
-        </div>`;
-    }
-
-    container.innerHTML = html;
-    videosShown = end;
-
-    // Показать кнопку Load more, если есть еще видео
-    const loadMoreBtn = document.getElementById('loadMoreBtn');
-    if (videosShown < videosData.length) {
-        loadMoreBtn.style.display = 'block';
-    } else {
-        loadMoreBtn.style.display = 'none';
-    }
-}
-
-// Load more button
-document.getElementById('loadMoreBtn').addEventListener('click', () => renderVideos());
-
-// Обновление графика и видео при изменении дат
-document.getElementById('date_from').addEventListener('change', () => { loadTrends(); loadVideos(true); });
-document.getElementById('date_to').addEventListener('change', () => { loadTrends(); loadVideos(true); });
-
-// Инициализация
-window.addEventListener('DOMContentLoaded', () => {
-    loadTrends();
-    loadVideos(true);
-});
-</script>
-
-{% endblock %}
+</body>
+</html>

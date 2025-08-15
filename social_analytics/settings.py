@@ -135,9 +135,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.CustomUser'
 
-LOGIN_URL = '/user_auth/login/'
+LOGIN_URL = 'google_login'
 
-LOGIN_REDIRECT_URL = '/api/youtube/dashboard/' 
+LOGIN_REDIRECT_URL = '/youtube/dashboard/' 
 
 
 
@@ -184,7 +184,8 @@ TIKTOK_CLIENT_SECRET = config("TIKTOK_CLIENT_SECRET")
 TIKTOK_REDIRECT_URI = config("TIKTOK_REDIRECT_URI")
 
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0'  
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+
+YOUTUBE_SCOPES = [
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/yt-analytics.readonly"
+]
