@@ -17,6 +17,8 @@ from accounts.models import GoogleCredentials
 
 logger = logging.getLogger(__name__)
 
+
+
 def refresh_access_token(google_credentials_obj):
     """
     Обновляет токен доступа Google, используя refresh_token,

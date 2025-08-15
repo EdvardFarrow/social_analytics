@@ -64,7 +64,7 @@ ROOT_URLCONF = 'social_analytics.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'], 
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -137,7 +137,7 @@ AUTH_USER_MODEL = 'accounts.CustomUser'
 
 LOGIN_URL = 'google_login'
 
-LOGIN_REDIRECT_URL = '/youtube/dashboard/' 
+LOGIN_REDIRECT_URL = '/youtube/dashboard/'
 
 
 

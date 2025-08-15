@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Logging in...</title>
+</head>
+<body>
+    <script>
+        const accessToken = "{{ access_token }}";
+        const refreshToken = "{{ refresh_token }}";
+        const nextUrl = "{{ next_url }}";
+
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+
+        window.location.href = nextUrl;
+    </script>
+</body>
+</html>
