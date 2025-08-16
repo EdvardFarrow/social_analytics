@@ -45,10 +45,11 @@ class YoutubeDailyStats(models.Model):
 # Модель для демографии аудитории (из Analytics API)
 class YoutubeAudienceDemographics(models.Model):
     channel = models.ForeignKey(YouTubeChannel, on_delete=models.CASCADE)
-    age_group = models.CharField(max_length=20)
-    gender = models.CharField(max_length=10)
+    age_group = models.CharField(max_length=60)
+    gender = models.CharField(max_length=60)
     views = models.IntegerField(default=0)
-    watch_time_minutes = models.FloatField()
+    watch_time_minutes = models.FloatField(default=0)
+    viewer_percentage = models.FloatField(null=True, blank=True)
 
     class Meta:
         unique_together = ('channel', 'age_group', 'gender')

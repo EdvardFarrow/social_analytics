@@ -187,5 +187,17 @@ TIKTOK_REDIRECT_URI = config("TIKTOK_REDIRECT_URI")
 
 YOUTUBE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.readonly",
-    "https://www.googleapis.com/auth/yt-analytics.readonly"
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/userinfo.email' 
 ]
+
+
+
+CSRF_COOKIE_SAMESITE = 'None'
+SESSION_COOKIE_SAMESITE = 'None'
+
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
+
+CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1']

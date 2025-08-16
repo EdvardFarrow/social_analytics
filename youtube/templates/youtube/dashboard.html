@@ -8,8 +8,7 @@
     <style>
         body { font-family: sans-serif; margin: 20px; }
         .dashboard-container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .chart-container { background: #f4f4f4; padding: 20px; border-radius: 8px; }
-        .table-container { background: #f4f4f4; padding: 20px; border-radius: 8px; }
+        .chart-container, .table-container { background: #f4f4f4; padding: 20px; border-radius: 8px; }
         h1 { color: #cc0000; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
@@ -17,9 +16,10 @@
 </head>
 <body>
     <h1>Панель управления YouTube-каналом</h1>
+    <p>DEBUG TOKEN: {{ youtube_access_token }}</p>
+    <div id="loading-message">Загрузка данных...</div>
 
     <div class="dashboard-container">
-        
         <div class="chart-container">
             <h2>Динамика подписчиков и просмотров</h2>
             <p>Данные за последние 30 дней.</p>
@@ -44,21 +44,20 @@
                         <th>Комментарии</th>
                     </tr>
                 </thead>
-                <tbody id="videosTableBody">
-                    </tbody>
+                <tbody id="videosTableBody"></tbody>
             </table>
         </div>
-
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
-        window.channelTrendsUrl = "{% url 'youtube_channel_trends' %}";
-        window.videoTrendsUrl = "{% url 'youtube_video_trends' %}";
-    </script>
+    window.channelTrendsUrl = "/youtube/trends/channel/";
+    window.videoTrendsUrl = "/youtube/trends/videos/";
+    window.googleLoginUrl = "/auth/google/login/";
+    window.youtubeAccessToken = "{{ access_token|default:'' }}";
+</script>
     
     <script src="{% static 'youtube/js/dashboard.js' %}"></script>
-
 </body>
 </html>

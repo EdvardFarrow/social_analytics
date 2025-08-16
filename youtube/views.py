@@ -6,6 +6,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import get_user_model, login
 from django.db.models import ObjectDoesNotExist
 from django.utils.dateparse import parse_date
 from django.views import View
@@ -25,6 +26,7 @@ from .services import fetch_and_save_analytics_data
 
 logger = logging.getLogger(__name__)
 
+User = get_user_model()
 
 # Views для фронтенда
 class YouTubeDashboardView(View):
@@ -56,28 +58,21 @@ def youtube_auth(request):
 
 
 
-@require_GET
 def youtube_callback(request):
     """
-    Обрабатывает обратный вызов от Google и обменивает код авторизации на токены.
+    Обрабатывает обратный вызов от Google, обменивает код на токены
+    и сохраняет их для пользователя.
     """
-    print("=" * 60)
-    print("ШАГ 1: Начало youtube_callback")
-    print("Полный GET-параметры запроса:", dict(request.GET))
-    
     code = request.GET.get('code')
+    print("--- ШАГ 1: Начало обработки callback ---")
+    print(f"Получен код от Google: {code}")
+
     if not code:
-        print("ОШИБКА: Нет кода. Возможно, повторный запрос.")
-        return JsonResponse({'error': 'No code provided'}, status=400)
+        print("ОШИБКА: Код не получен. Перенаправление на главную.")
+        return redirect('/')
 
-    print("ШАГ 2: Пользователь авторизован:", request.user)
-    print("Полученный code:", code)
-
-    # redirect_uri нужно вычислять до использования
     full_redirect_uri = request.build_absolute_uri(reverse('youtube_callback'))
-    print("redirect_uri, который шлём в Google:", full_redirect_uri)
-
-    token_url = 'https://oauth2.googleapis.com/token'
+    print(f"URI для перенаправления: {full_redirect_uri}")
     token_data = {
         'code': code,
         'client_id': settings.YOUTUBE_CLIENT_ID,
@@ -85,98 +80,116 @@ def youtube_callback(request):
         'redirect_uri': full_redirect_uri,
         'grant_type': 'authorization_code',
     }
-    print("ШАГ 3: Данные для обмена токенов:", token_data)
-
+    
     try:
-        token_resp = requests.post(token_url, data=token_data)
-        print("HTTP-статус ответа Google:", token_resp.status_code)
-        print("Заголовки ответа Google:", dict(token_resp.headers))
-        print("Текст ответа Google:", token_resp.text)
+        print("Запрос на обмен кода на токен...")
+        token_resp = requests.post('https://oauth2.googleapis.com/token', data=token_data)
+        token_resp.raise_for_status()
         token_json = token_resp.json()
-    except Exception as e:
-        print(f"ОШИБКА: Не удалось получить токены. Детали: {e}")
-        return JsonResponse({'error': 'Failed to get token', 'details': str(e)}, status=400)
+        print("Токен успешно получен!")
+    except requests.exceptions.HTTPError as e:
+        print(f"ОШИБКА: Проблема с запросом к Google API: {e}")
+        return redirect('google_login')
 
-    if "access_token" not in token_json:
-        print("ОШИБКА: В ответе нет access_token. Полный ответ:", token_json)
-        return JsonResponse({'error': 'Failed to get token', 'details': token_json}, status=400)
-
-    print("ШАГ 4: Токены успешно получены.")
     access_token = token_json.get('access_token')
     refresh_token = token_json.get('refresh_token')
     expires_in = token_json.get('expires_in', 3600)
+    print(f"Получен access_token: {'...' + access_token[-10:] if access_token else 'НЕТ'}")
+    print(f"Получен refresh_token: {'ДА' if refresh_token else 'НЕТ'}")
 
-    user = request.user
-    print(f"ШАГ 5: Сохранение токенов для пользователя {user}")
+    print("Запрос информации о пользователе...")
+    try:
+        userinfo_resp = requests.get(
+            'https://www.googleapis.com/oauth2/v3/userinfo',
+            headers={'Authorization': f'Bearer {access_token}'}
+        )
+        userinfo_resp.raise_for_status()
+        user_data = userinfo_resp.json()
+        email = user_data.get('email')
+        print(f"Получен email пользователя: {email}")
+    except requests.exceptions.HTTPError as e:
+        print(f"ОШИБКА: Не удалось получить email пользователя: {e}")
+        return redirect('google_login')
+
+    if not email:
+        print("ОШИБКА: Email пользователя не найден.")
+        return redirect('google_login')
 
     try:
-        google_creds_obj = GoogleCredentials.objects.get(user=user)
-        google_creds_obj.access_token = access_token
-        google_creds_obj.expires_in = timezone.now() + timedelta(seconds=expires_in)
-        if refresh_token:
-            google_creds_obj.refresh_token = refresh_token
-        google_creds_obj.save()
-    except ObjectDoesNotExist:
-        print("Пользователь не имел GoogleCredentials — создаём новую запись.")
-        if not refresh_token:
-            print("ОШИБКА: Нет refresh_token для новой записи!")
-            return JsonResponse({"error": "No refresh token for a new credentials record. Please try again."}, status=400)
-        
-        GoogleCredentials.objects.create(
-            user=user,
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_in=timezone.now() + timedelta(seconds=expires_in)
-        )
+        user = CustomUser.objects.get(email=email)
+        print(f"Пользователь '{user.email}' найден. Логиним...")
+    except CustomUser.DoesNotExist:
+        print(f"ОШИБКА: Пользователь с email '{email}' не найден в базе данных.")
+        return redirect('google_login')
 
-    print("ШАГ 6: Подключение к YouTube API.")
-    try:
-        creds = Credentials(token=access_token, refresh_token=refresh_token)
-        youtube_service = build("youtube", "v3", credentials=creds)
-        channels_response = youtube_service.channels().list(mine=True, part="id,snippet").execute()
-
-        if not channels_response.get('items'):
-            print("ОШИБКА: Пустой список каналов в ответе.")
-            return JsonResponse({"error": "Failed to get channel information."}, status=400)
-        
-        channel_info = channels_response['items'][0]
-        channel_id = channel_info.get('id')
-        title = channel_info['snippet']['title']
-        description = channel_info['snippet'].get('description', '') 
-        print(f"Найден канал: {title} (ID: {channel_id})")
-
-        YouTubeChannel.objects.update_or_create(
-            user=user,
-            channel_id=channel_id,
-            defaults={'title': title, 'description': description}
-        )
-    except Exception as e:
-        print(f"ОШИБКА: Не удалось получить ID канала. Детали: {e}")
-        return JsonResponse({"error": f"Error fetching channel ID: {e}"}, status=500)
+    login(request, user)
+    print("Пользователь успешно залогинен в Django.")
+    print(f"Текущий пользователь в запросе: {request.user.email} (Аутентифицирован: {request.user.is_authenticated})")
     
-    print("ШАГ 7: Получение аналитики.")
-    try:
-        fetch_and_save_analytics_data(user, channel_id)
-        print("Аналитика сохранена.")
-    except Exception as e:
-        print(f"ОШИБКА: Аналитика не получена. Детали: {e}")
+    print("Сохранение учетных данных Google...")
+    creds_obj, created = GoogleCredentials.objects.get_or_create(user=user)
+    creds_obj.access_token = access_token
+    if refresh_token:
+        creds_obj.refresh_token = refresh_token
+    creds_obj.token_expiry = timezone.now() + timedelta(seconds=expires_in)
+    creds_obj.save()
+    print("Учетные данные Google сохранены/обновлены.")
 
-    print("ШАГ 8: Перенаправление на дашборд.")
-    print("=" * 60)
+    # ... (остальной код для получения аналитики YouTube)
+    
+    print("--- ШАГ 6: Перенаправление на дашборд ---")
     return redirect('youtube-dashboard')
 
 
+def youtube_dashboard(request):
+    """
+    Рендерит страницу дашборда YouTube, получая токен из БД.
+    """
+    print("--- DEBUG: Entering youtube_dashboard view ---")
+    access_token = None
+    if request.user.is_authenticated:
+        try:
+            creds_obj = GoogleCredentials.objects.get(user=request.user)
+            access_token = creds_obj.access_token
+        except GoogleCredentials.DoesNotExist:
+            print("DEBUG: GoogleCredentials object not found for user.")
+    
+    print(f"DEBUG: Token from database for dashboard: {access_token}")
 
-# API Views для получения данных
+    context = {
+        'youtube_access_token': access_token,
+    }
+    return render(request, 'youtube/dashboard.html', context)
+
+
 @api_view(['GET'])
-@login_required
-@require_GET
 def channel_trends(request):
-    user = request.user
+    """
+    Возвращает данные по аналитике канала.
+    """
+    print("--- DEBUG: Entering channel_trends API view ---")
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        print("DEBUG: Authorization header is missing or malformed.")
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+
+    access_token = auth_header.split(' ')[1]
+    print(f"DEBUG: Received access token: {'...' + access_token[-10:] if access_token else 'None'}")
+
+    try:
+        creds_obj = GoogleCredentials.objects.get(access_token=access_token)
+        user = creds_obj.user
+        print(f"DEBUG: User found for token: {user.email}")
+    except ObjectDoesNotExist:
+        print("DEBUG: Invalid token, user not found.")
+        return JsonResponse({'error': 'Invalid token'}, status=401)
+    
     user_channels = YouTubeChannel.objects.filter(user=user)
     channel_id = request.GET.get('channel_id') or (user_channels.first().channel_id if user_channels else None)
+    print(f"DEBUG: Channel ID being used: {channel_id}")
 
     if not channel_id:
+        print("DEBUG: No channels found for this user.")
         return JsonResponse({'error': 'No channels found for this user'}, status=404)
 
     date_from_str = request.GET.get('date_from')
@@ -187,6 +200,7 @@ def channel_trends(request):
         channel__channel_id=channel_id,
         date__range=[date_from, date_to]
     ).order_by('date')
+    print(f"DEBUG: Found {stats_qs.count()} daily stats entries.")
 
     dates = [stat.date.isoformat() for stat in stats_qs]
     views = [stat.views for stat in stats_qs]
@@ -202,21 +216,39 @@ def channel_trends(request):
 
 
 @api_view(['GET'])
-@login_required
-@require_GET
 def video_trends(request):
-    user = request.user
+    """
+    Возвращает данные по аналитике видео.
+    """
+    print("--- DEBUG: Entering video_trends API view ---")
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        print("DEBUG: Authorization header is missing or malformed.")
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    
+    access_token = auth_header.split(' ')[1]
+    print(f"DEBUG: Received access token: {'...' + access_token[-10:] if access_token else 'None'}")
+
+    try:
+        creds_obj = GoogleCredentials.objects.get(access_token=access_token)
+        user = creds_obj.user
+        print(f"DEBUG: User found for token: {user.email}")
+    except ObjectDoesNotExist:
+        print("DEBUG: Invalid token, user not found.")
+        return JsonResponse({'error': 'Invalid token'}, status=401)
 
     date_from_str = request.GET.get('date_from')
     date_from = parse_date(date_from_str) if date_from_str else (date.today() - timedelta(days=30))
     date_to = parse_date(request.GET.get('date_to')) if request.GET.get('date_to') else date.today()
     
     sort_by = request.GET.get('sort_by', '-views')
-
+    
     videos = YouTubeVideo.objects.filter(
         channel__user=user,
         published_at__date__range=[date_from, date_to]
     ).order_by(sort_by)
+    
+    print(f"DEBUG: Found {videos.count()} videos for user.")
 
     videos_data = [
         {
