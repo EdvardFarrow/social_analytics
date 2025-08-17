@@ -41,7 +41,6 @@ class YouTubeLoginView(View):
 @login_required
 @require_GET
 def youtube_auth(request):
-    # Теперь этот код будет выполняться только для аутентифицированных пользователей
     base_url = "https://accounts.google.com/o/oauth2/v2/auth"
     full_redirect_uri = request.build_absolute_uri(reverse('youtube_callback'))
     params = {
@@ -59,20 +58,12 @@ def youtube_auth(request):
 
 
 def youtube_callback(request):
-    """
-    Обрабатывает обратный вызов от Google, обменивает код на токены
-    и сохраняет их для пользователя.
-    """
     code = request.GET.get('code')
-    print("--- ШАГ 1: Начало обработки callback ---")
-    print(f"Получен код от Google: {code}")
 
     if not code:
-        print("ОШИБКА: Код не получен. Перенаправление на главную.")
         return redirect('/')
 
     full_redirect_uri = request.build_absolute_uri(reverse('youtube_callback'))
-    print(f"URI для перенаправления: {full_redirect_uri}")
     token_data = {
         'code': code,
         'client_id': settings.YOUTUBE_CLIENT_ID,
@@ -82,22 +73,16 @@ def youtube_callback(request):
     }
     
     try:
-        print("Запрос на обмен кода на токен...")
         token_resp = requests.post('https://oauth2.googleapis.com/token', data=token_data)
         token_resp.raise_for_status()
         token_json = token_resp.json()
-        print("Токен успешно получен!")
     except requests.exceptions.HTTPError as e:
-        print(f"ОШИБКА: Проблема с запросом к Google API: {e}")
         return redirect('google_login')
 
     access_token = token_json.get('access_token')
     refresh_token = token_json.get('refresh_token')
     expires_in = token_json.get('expires_in', 3600)
-    print(f"Получен access_token: {'...' + access_token[-10:] if access_token else 'НЕТ'}")
-    print(f"Получен refresh_token: {'ДА' if refresh_token else 'НЕТ'}")
 
-    print("Запрос информации о пользователе...")
     try:
         userinfo_resp = requests.get(
             'https://www.googleapis.com/oauth2/v3/userinfo',
@@ -106,90 +91,85 @@ def youtube_callback(request):
         userinfo_resp.raise_for_status()
         user_data = userinfo_resp.json()
         email = user_data.get('email')
-        print(f"Получен email пользователя: {email}")
     except requests.exceptions.HTTPError as e:
-        print(f"ОШИБКА: Не удалось получить email пользователя: {e}")
         return redirect('google_login')
 
     if not email:
-        print("ОШИБКА: Email пользователя не найден.")
         return redirect('google_login')
 
     try:
         user = CustomUser.objects.get(email=email)
-        print(f"Пользователь '{user.email}' найден. Логиним...")
     except CustomUser.DoesNotExist:
-        print(f"ОШИБКА: Пользователь с email '{email}' не найден в базе данных.")
         return redirect('google_login')
 
     login(request, user)
-    print("Пользователь успешно залогинен в Django.")
-    print(f"Текущий пользователь в запросе: {request.user.email} (Аутентифицирован: {request.user.is_authenticated})")
     
-    print("Сохранение учетных данных Google...")
     creds_obj, created = GoogleCredentials.objects.get_or_create(user=user)
     creds_obj.access_token = access_token
     if refresh_token:
         creds_obj.refresh_token = refresh_token
     creds_obj.token_expiry = timezone.now() + timedelta(seconds=expires_in)
     creds_obj.save()
-    print("Учетные данные Google сохранены/обновлены.")
 
-    # ... (остальной код для получения аналитики YouTube)
-    
-    print("--- ШАГ 6: Перенаправление на дашборд ---")
     return redirect('youtube-dashboard')
 
 
+# Views для фронтенда
+@login_required
 def youtube_dashboard(request):
     """
-    Рендерит страницу дашборда YouTube, получая токен из БД.
-    """
-    print("--- DEBUG: Entering youtube_dashboard view ---")
+    Renders the YouTube dashboard page and passes the user's access token
+    to the frontend for making API calls.
+    """    
     access_token = None
     if request.user.is_authenticated:
         try:
             creds_obj = GoogleCredentials.objects.get(user=request.user)
             access_token = creds_obj.access_token
         except GoogleCredentials.DoesNotExist:
-            print("DEBUG: GoogleCredentials object not found for user.")
+            pass # No credentials found, access token will remain None.
     
-    print(f"DEBUG: Token from database for dashboard: {access_token}")
-
     context = {
         'youtube_access_token': access_token,
     }
+    
     return render(request, 'youtube/dashboard.html', context)
 
 
+# API views
 @api_view(['GET'])
+@login_required
 def channel_trends(request):
-    """
-    Возвращает данные по аналитике канала.
-    """
-    print("--- DEBUG: Entering channel_trends API view ---")
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        print("DEBUG: Authorization header is missing or malformed.")
-        return JsonResponse({'error': 'Authentication required'}, status=401)
-
-    access_token = auth_header.split(' ')[1]
-    print(f"DEBUG: Received access token: {'...' + access_token[-10:] if access_token else 'None'}")
-
     try:
-        creds_obj = GoogleCredentials.objects.get(access_token=access_token)
-        user = creds_obj.user
-        print(f"DEBUG: User found for token: {user.email}")
+        creds_obj = GoogleCredentials.objects.get(user=request.user)
+        
+        if creds_obj.token_expiry <= timezone.now() + timedelta(minutes=5):
+            if not creds_obj.refresh_token:
+                return JsonResponse({'error': 'Token expired. Please re-authenticate.'}, status=401)
+                
+            token_data = {
+                'grant_type': 'refresh_token',
+                'client_id': settings.YOUTUBE_CLIENT_ID,
+                'client_secret': settings.YOUTUBE_CLIENT_SECRET,
+                'refresh_token': creds_obj.refresh_token,
+            }
+            token_resp = requests.post('https://oauth2.googleapis.com/token', data=token_data)
+            token_resp.raise_for_status()
+            token_json = token_resp.json()
+            
+            creds_obj.access_token = token_json['access_token']
+            creds_obj.token_expiry = timezone.now() + timedelta(seconds=token_json['expires_in'])
+            creds_obj.save()
+            
     except ObjectDoesNotExist:
-        print("DEBUG: Invalid token, user not found.")
-        return JsonResponse({'error': 'Invalid token'}, status=401)
+        return JsonResponse({'error': 'No credentials found for this user'}, status=401)
+    except requests.exceptions.HTTPError:
+        return JsonResponse({'error': 'Token refresh failed'}, status=401)
     
-    user_channels = YouTubeChannel.objects.filter(user=user)
+    user_channels = YouTubeChannel.objects.filter(user=request.user)
     channel_id = request.GET.get('channel_id') or (user_channels.first().channel_id if user_channels else None)
-    print(f"DEBUG: Channel ID being used: {channel_id}")
 
     if not channel_id:
-        print("DEBUG: No channels found for this user.")
         return JsonResponse({'error': 'No channels found for this user'}, status=404)
 
     date_from_str = request.GET.get('date_from')
@@ -200,7 +180,6 @@ def channel_trends(request):
         channel__channel_id=channel_id,
         date__range=[date_from, date_to]
     ).order_by('date')
-    print(f"DEBUG: Found {stats_qs.count()} daily stats entries.")
 
     dates = [stat.date.isoformat() for stat in stats_qs]
     views = [stat.views for stat in stats_qs]
@@ -214,28 +193,34 @@ def channel_trends(request):
         'subscribers_lost': subscribers_lost
     })
 
-
 @api_view(['GET'])
+@login_required
 def video_trends(request):
-    """
-    Возвращает данные по аналитике видео.
-    """
-    print("--- DEBUG: Entering video_trends API view ---")
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        print("DEBUG: Authorization header is missing or malformed.")
-        return JsonResponse({'error': 'Authentication required'}, status=401)
-    
-    access_token = auth_header.split(' ')[1]
-    print(f"DEBUG: Received access token: {'...' + access_token[-10:] if access_token else 'None'}")
-
     try:
-        creds_obj = GoogleCredentials.objects.get(access_token=access_token)
-        user = creds_obj.user
-        print(f"DEBUG: User found for token: {user.email}")
+        creds_obj = GoogleCredentials.objects.get(user=request.user)
+        
+        if creds_obj.token_expiry <= timezone.now() + timedelta(minutes=5):
+            if not creds_obj.refresh_token:
+                return JsonResponse({'error': 'Token expired. Please re-authenticate.'}, status=401)
+                
+            token_data = {
+                'grant_type': 'refresh_token',
+                'client_id': settings.YOUTUBE_CLIENT_ID,
+                'client_secret': settings.YOUTUBE_CLIENT_SECRET,
+                'refresh_token': creds_obj.refresh_token,
+            }
+            token_resp = requests.post('https://oauth2.googleapis.com/token', data=token_data)
+            token_resp.raise_for_status()
+            token_json = token_resp.json()
+            
+            creds_obj.access_token = token_json['access_token']
+            creds_obj.token_expiry = timezone.now() + timedelta(seconds=token_json['expires_in'])
+            creds_obj.save()
+            
     except ObjectDoesNotExist:
-        print("DEBUG: Invalid token, user not found.")
-        return JsonResponse({'error': 'Invalid token'}, status=401)
+        return JsonResponse({'error': 'No credentials found for this user'}, status=401)
+    except requests.exceptions.HTTPError:
+        return JsonResponse({'error': 'Token refresh failed'}, status=401)
 
     date_from_str = request.GET.get('date_from')
     date_from = parse_date(date_from_str) if date_from_str else (date.today() - timedelta(days=30))
@@ -244,12 +229,10 @@ def video_trends(request):
     sort_by = request.GET.get('sort_by', '-views')
     
     videos = YouTubeVideo.objects.filter(
-        channel__user=user,
+        channel__user=request.user,
         published_at__date__range=[date_from, date_to]
     ).order_by(sort_by)
     
-    print(f"DEBUG: Found {videos.count()} videos for user.")
-
     videos_data = [
         {
             'title': v.title,

@@ -24,7 +24,6 @@ def refresh_access_token(google_credentials_obj):
     Обновляет токен доступа Google, используя refresh_token,
     и сохраняет обновленный токен и срок его действия в модели GoogleCredentials.
     """
-    # Если токен еще действителен, возвращаем его
     if google_credentials_obj.token_expiry and timezone.now() < google_credentials_obj.token_expiry:
         return google_credentials_obj.access_token
 
@@ -37,11 +36,10 @@ def refresh_access_token(google_credentials_obj):
 
     try:
         response = requests.post('https://oauth2.googleapis.com/token', data=data)
-        response.raise_for_status() # Вызовет исключение для ошибок HTTP (4xx или 5xx)
+        response.raise_for_status() 
         token_data = response.json()
 
         google_credentials_obj.access_token = token_data['access_token']
-        # Проверяем наличие refresh_token, он не всегда возвращается при обновлении
         if 'refresh_token' in token_data:
             google_credentials_obj.refresh_token = token_data['refresh_token']
         google_credentials_obj.token_expiry = timezone.now() + timedelta(seconds=token_data.get('expires_in', 3600))
@@ -78,22 +76,19 @@ def fetch_and_save_analytics_data(user, channel_id):
     """
     try:
         google_credentials_obj = user.google_credentials
-        access_token = refresh_access_token(google_credentials_obj) # Обновляем токен перед использованием
+        access_token = refresh_access_token(google_credentials_obj)
 
         creds = Credentials(token=access_token)
         youtube_analytics = build("youtubeAnalytics", "v2", credentials=creds)
 
-        # Определяем период для запроса (например, за последние 30 дней)
         end_date = timezone.now().date()
         start_date = end_date - timedelta(days=30)
         
-        # Получаем объект канала или создаем, если его нет
         channel, created = YouTubeChannel.objects.get_or_create(channel_id=channel_id, defaults={'user': user, 'title': 'Unknown Channel'})
         if created:
             logger.info(f"Created new YouTubeChannel entry for ID: {channel_id}")
 
 
-        # --- Запрос ежедневной статистики (Views, Subscribers Gained/Lost, Watch Time, Likes, Comments) ---
         daily_stats_response = youtube_analytics.reports().query(
             ids=f"channel=={channel_id}",
             startDate=start_date.isoformat(),
@@ -128,8 +123,6 @@ def fetch_and_save_analytics_data(user, channel_id):
             dimensions="ageGroup,gender",
         ).execute()
 
-        # Очищаем старые демографические данные перед записью новых,
-        # так как демография не меняется ежедневно и нам нужен только последний срез.
         YoutubeAudienceDemographics.objects.filter(channel=channel).delete()
 
         for row in demographics_response.get('rows', []):
@@ -137,7 +130,7 @@ def fetch_and_save_analytics_data(user, channel_id):
             gender = row[1]
             viewer_percentage = row[2]
             
-            YoutubeAudienceDemographics.objects.create( # Используем create вместо update_or_create после очистки
+            YoutubeAudienceDemographics.objects.create( 
                 channel=channel,
                 age_group=age_group,
                 gender=gender,
@@ -166,7 +159,6 @@ def update_all_videos(google_credentials_obj):
     except YouTubeChannel.DoesNotExist:
         raise Exception("Канал для этого пользователя не найден. Сначала нужно привязать канал.")
 
-    # Получаем список ID всех видео канала
     video_ids = []
     next_page_token = None
     
@@ -174,7 +166,7 @@ def update_all_videos(google_credentials_obj):
 
     while True:
         playlist_items_response = youtube.playlistItems().list(
-            playlistId=channel.channel_id.replace('UC', 'UU'), # 'UU' для плейлиста загруженных видео
+            playlistId=channel.channel_id.replace('UC', 'UU'), 
             part='snippet',
             maxResults=50,
             pageToken=next_page_token
@@ -188,7 +180,6 @@ def update_all_videos(google_credentials_obj):
             break
 
     total_updated = 0
-    # Получаем статистику для видео партиями по 50
     for i in range(0, len(video_ids), 50):
         batch_ids = video_ids[i:i + 50]
         
@@ -202,7 +193,6 @@ def update_all_videos(google_credentials_obj):
             snippet = item['snippet']
             stats = item.get('statistics', {})
 
-            # Обновляем или создаем запись в YouTubeVideo
             video_obj, created = YouTubeVideo.objects.update_or_create(
                 video_id=vid_id,
                 defaults={
@@ -215,7 +205,6 @@ def update_all_videos(google_credentials_obj):
                 }
             )
             
-            # Сохраняем ежедневный снимок статистики видео
             YouTubeVideoDailyStats.objects.update_or_create(
                 video=video_obj,
                 date=timezone.now().date(),
