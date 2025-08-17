@@ -1,58 +1,10 @@
-{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>YouTube Analytics Dashboard</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            background-color: #f4f4f4;
-            min-height: 100vh;
-        }
-        .container {
-            max-width: 1200px; 
-            margin: auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-        .chart-container {
-            margin-top: 20px;
-            width: 100%; 
-            box-sizing: border-box;
-        }
-        .date-filter-container {
-            margin-bottom: 20px;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        h1, h2 {
-            color: #333;
-        }
-        #loading-message {
-            text-align: center;
-            font-size: 1.2em;
-            color: #555;
-            margin-top: 50px;
-        }
-        #videosTable {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        #videosTable th, #videosTable td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        #videosTable th {
-            background-color: #f2f2f2;
-        }
-    </style>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'youtube/css/dashboard.css' %}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -69,15 +21,64 @@
             <button id="applyFilterBtn">Применить</button>
         </div>
 
-        <div class="chart-container">
-            <h2>Динамика просмотров канала</h2>
-            <canvas id="viewsChart"></canvas>
+        <div class="main-charts">
+            <div class="chart-container">
+                <h2>Динамика просмотров канала</h2>
+                <p class="data-info">Данные обновляются с задержкой 2-3 дня.</p>
+                <canvas id="viewsChart"></canvas>
+            </div>
+            
+            <div class="chart-container">
+                <h2>Динамика подписчиков</h2>
+                <p class="data-info">Данные обновляются с задержкой 2-3 дня.</p>
+                <canvas id="subscribersChart"></canvas>
+            </div>
+        </div>
+
+        <div class="demographics-section">
+            <h2>Демография аудитории</h2>
+            <p id="demographics-message" style="text-align: center; color: #888; display: none;">Данных недостаточно для отображения графиков.</p>
+            <div class="demographics-charts-row">
+                <div class="chart-container-large">
+                    <h3>Возрастные группы</h3>
+                    <canvas id="ageChart"></canvas>
+                </div>
+                <div class="chart-container-small">
+                    <h3>Пол</h3>
+                    <canvas id="genderChart"></canvas>
+                </div>
+            </div>
         </div>
         
-        <div class="chart-container">
-            <h2>Динамика подписчиков</h2>
-            <canvas id="subscribersChart"></canvas>
+        <div class="row">
+            <div class="col-12 text-center">
+                <p id="viewer-activity-message" style="display: none;">Недостаточно данных для построения графиков активности аудитории.</p>
+            </div>
         </div>
+
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        Просмотры по типу устройства
+                    </div>
+                    <div class="card-body">
+                        <canvas id="deviceTypeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        Просмотры по статусу подписки
+                    </div>
+                    <div class="card-body">
+                        <canvas id="subscribedStatusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
 
         <div class="videos-section">
             <h2>Последние видео</h2>
@@ -101,6 +102,11 @@
         window.youtubeAccessToken = "{{ youtube_access_token }}";
         window.channelTrendsUrl = "{% url 'channel_trends' %}";
         window.videoTrendsUrl = "{% url 'video_trends' %}";
+        window.audienceDemographicsUrl = "{% url 'audience_demographics' %}";
+        window.channelId = "{{ channel_id }}"; 
+        
+        // NEW: Get viewer activity data from the context
+        window.viewerActivityData = {{ viewer_activity_data|safe }};
     </script>
     {% load static %}
     <script src="{% static 'youtube/js/dashboard.js' %}"></script>

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ошибка</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'youtube/css/error_page.css' %}">
+</head>
+<body>
+    <div class="error-container">
+        <h1>Произошла ошибка</h1>
+        
+        <p>{{ error_message }}</p>
+
+        <a href="{% url 'youtube-dashboard' %}" class="back-link">Попробовать снова</a>
+    </div>
+</body>
+</html>
