@@ -1,4 +1,5 @@
 from django.utils import timezone
+from django.conf import settings
 from datetime import timedelta
 from decouple import config
 import requests
@@ -8,10 +9,10 @@ def refresh_google_access_token(credentials: GoogleCredentials) -> str:
     if timezone.now() < credentials.token_expiry - timedelta(minutes=5):
         return credentials.access_token
 
-    token_url = "https://oauth2.googleapis.com/token"
+    token_url = settings.GOOGLE_TOKEN_URI
     data = {
-        'client_id': credentials.client_id,
-        'client_secret': credentials.client_secret,
+        'client_id': settings.GOOGLE_CLIENT_ID,
+        'client_secret': settings.GOOGLE_CLIENT_SECRET,
         'refresh_token': credentials.refresh_token,
         'grant_type': 'refresh_token',
     }

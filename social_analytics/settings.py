@@ -42,11 +42,10 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     'rest_framework',
     'rest_framework_simplejwt.token_blacklist',
+    'django_celery_beat',
     'accounts',
     'user_auth',
     'youtube',
-    'tiktok',
-    'django_celery_beat',
 ]
 
 MIDDLEWARE = [
@@ -175,6 +174,7 @@ GOOGLE_CLIENT_ID = config("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = config("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = config("GOOGLE_REDIRECT_URI")
 GOOGLE_SCOPES = config("GOOGLE_SCOPES") 
+GOOGLE_TOKEN_URI = config("GOOGLE_TOKEN_URI")
 
 YOUTUBE_CLIENT_ID = config("YOUTUBE_CLIENT_ID")
 YOUTUBE_CLIENT_SECRET = config("YOUTUBE_CLIENT_SECRET")

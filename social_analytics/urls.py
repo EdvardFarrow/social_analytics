@@ -22,6 +22,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("auth/", include("user_auth.urls")),
     path("youtube/", include('youtube.urls')),
-    path("tiktok/", include('tiktok.urls')),
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
 ]
