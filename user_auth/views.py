@@ -1,7 +1,6 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import RegisterSerializer, LoginSerializer, LogoutSerializer
 import requests
 from django.views import View
 from django.conf import settings
@@ -19,53 +18,7 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from accounts.models import CustomUser
 
-class RegisterView(generics.CreateAPIView):
-    serializer_class = RegisterSerializer
 
-class LoginView(generics.GenericAPIView):
-    serializer_class = LoginSerializer
-
-    def post(self, request):
-        user = self.get_serializer(data=request.data)
-        user.is_valid(raise_exception=True)
-        user = user.validated_data
-        refresh = RefreshToken.for_user(user)
-        return Response({
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-        })
-
-
-class LoginPageView(View):
-    def get(self, request):
-        return render(request, 'user_auth/login.html')
-
-    def post(self, request):
-        email = request.POST.get('email')
-        password = request.POST.get('password')
-        user = authenticate(request, email=email, password=password)
-        if user is not None:
-            login(request, user)
-            next_url = request.GET.get('next') or '/'
-            return redirect(next_url)
-        else:
-            return render(request, 'user_auth/login.html', {'form': None, 'errors': True})
-        
-        
-class LogoutView(generics.GenericAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = LogoutSerializer
-    
-    def post(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        refresh_token = serializer.validated_data["refresh"]
-        try:
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-            return Response(status=status.HTTP_205_RESET_CONTENT)
-        except Exception:
-            return Response(status=status.HTTP_400_BAD_REQUEST)
 
 
 User = get_user_model()
