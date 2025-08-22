@@ -6,7 +6,8 @@ from .views import (
     channel_trends,
     video_trends,
     audience_demographics,
-    viewer_activity
+    viewer_activity,
+    gemini_chat
 )
 
 urlpatterns = [
@@ -18,4 +19,6 @@ urlpatterns = [
     path('trends/channel/', channel_trends, name='channel_trends'),
     path('trends/videos/', video_trends, name='video_trends'),
     path('api/viewer_activity/', viewer_activity, name='viewer_activity'), 
+    
+    path('gemini-chat/', gemini_chat, name='gemini_chat'),
 ]

@@ -24,7 +24,13 @@ from googleapiclient.discovery import build
 
 from accounts.models import CustomUser, GoogleCredentials
 from .models import YouTubeChannel, YoutubeDailyStats, YouTubeVideo, YoutubeAudienceDemographics
-from .services import fetch_and_save_analytics_data, fetch_own_channel_id, update_all_videos, fetch_viewer_activity
+from .services import (
+    fetch_and_save_analytics_data, 
+    fetch_own_channel_id, 
+    update_all_videos, 
+    fetch_viewer_activity
+)
+from .gemini import generate_content_summary
 
 logger = logging.getLogger(__name__)
 
@@ -151,15 +157,46 @@ def youtube_dashboard(request):
             end_date_str
         )
 
+        video_stats = [
+            {
+                'title': v.title,
+                'views': v.views,
+                'likes': v.likes,
+                'comments': v.comments,
+                'published_at': v.published_at.date().isoformat(),
+            }
+            for v in YouTubeVideo.objects.filter(channel__user=request.user)
+        ]
+        
+        subscriber_trends = [
+            {
+                'date': stat.date.isoformat(),
+                'subscribers_gained': stat.subscribers_gained,
+                'subscribers_lost': stat.subscribers_lost,
+            }
+            for stat in YoutubeDailyStats.objects.filter(channel__user=request.user).order_by('date')
+        ]
+        
+        top_videos = sorted(video_stats, key=lambda x: x['views'], reverse=True)[:5]
+        
+        dashboard_data = {
+            'viewer_activity': viewer_activity_data,
+            'video_stats': video_stats,
+            'subscriber_trends': subscriber_trends,
+            'top_videos': top_videos,
+        }
+
         context = {
             'youtube_access_token': creds_obj.access_token,
             'channel_title': channel_obj.title,
             'channel_id': channel_id,
-            'viewer_activity_data': json.dumps(viewer_activity_data),
             'start_date': start_date_str,
             'end_date': end_date_str,
             'viewer_activity_data': json.dumps(viewer_activity_data),
+            'dashboard_data_json': json.dumps(dashboard_data),
         }
+        
+
         return render(request, 'youtube/dashboard.html', context)
 
     except GoogleCredentials.DoesNotExist:
@@ -346,3 +383,24 @@ def viewer_activity(request):
     )
 
     return JsonResponse(activity_data)    
+
+
+# GEMINI VIEW
+@api_view(['POST'])
+@login_required
+def gemini_chat(request):
+    message = request.data.get('message')
+    dashboard_data = request.data.get('dashboard_data', {})
+    
+    if not message:
+        return JsonResponse({'error': 'Message is required'}, status=400)
+    
+    prompt = f"""
+    Ты аналитик YouTube. Пользователь просит: "{message}".
+    Вот текущие данные дашборда:
+    {dashboard_data}
+    Дай рекомендации, выводы и короткий анализ.
+    """
+    
+    response_text = generate_content_summary(prompt)
+    return JsonResponse({'response': response_text})

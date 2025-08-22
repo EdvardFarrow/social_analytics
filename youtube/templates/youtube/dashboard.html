@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -80,6 +81,21 @@
         </div>
 
 
+        <div id="gemini-chat-container" data-dashboard='{{ dashboard_data_json|escapejs }}'>            
+            <div id="gemini-chat-header">
+                <span>Gemini Chat</span>
+                <button id="gemini-toggle">—</button>
+            </div>
+            <div id="gemini-chat-messages">
+                <div id="typing-indicator" style="display:none;">Gemini печатает...</div>
+            </div>
+            <div id="gemini-chat-input">
+                <input type="text" id="gemini-input" placeholder="Напиши сообщение..." />
+                <button id="gemini-send">Отправить</button>
+            </div>
+        </div>
+
+
         <div class="videos-section">
             <h2>Последние видео</h2>
             <table id="videosTable">
@@ -92,8 +108,7 @@
                         <th>Комментарии</th>
                     </tr>
                 </thead>
-                <tbody id="videosTableBody">
-                    </tbody>
+                <tbody id="videosTableBody"></tbody>
             </table>
         </div>
     </div>
@@ -104,9 +119,15 @@
         window.videoTrendsUrl = "{% url 'video_trends' %}";
         window.audienceDemographicsUrl = "{% url 'audience_demographics' %}";
         window.channelId = "{{ channel_id }}"; 
-        
-        // NEW: Get viewer activity data from the context
         window.viewerActivityData = {{ viewer_activity_data|safe }};
+
+        window.dashboardData = {{ dashboard_data_json|safe }};
+        window.geminiChatContainer = document.getElementById('gemini-chat-container');
+        window.geminiChatMessages = document.getElementById('gemini-chat-messages');
+        window.geminiInput = document.getElementById('gemini-input');
+        window.geminiSendBtn = document.getElementById('gemini-send');
+        window.toggleBtn = document.getElementById('gemini-toggle'); 
+
     </script>
     {% load static %}
     <script src="{% static 'youtube/js/dashboard.js' %}"></script>

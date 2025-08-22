@@ -1,14 +1,72 @@
+{% load static %}
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>Home Page</title>
+    <style>
+        /* ---- Стили для страницы ---- */
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: white;
+            padding: 2rem 3rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        p {
+            color: #666;
+            margin: 1rem 0;
+        }
+
+        /* ---- Кнопка YouTube ---- */
+        .button-wrapper {
+            display: flex;
+            justify-content: center;
+            margin-top: 1.5rem;
+        }
+
+        .youtube-btn {
+            display: inline-block;
+            background-color: #FF0000;
+            color: white;
+            font-weight: bold;
+            text-decoration: none;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            transition: background 0.3s ease, transform 0.2s ease;
+        }
+
+        .youtube-btn:hover {
+            background-color: #CC0000;
+            transform: scale(1.05);
+        }
+    </style>
 </head>
 <body>
-    <h1>Welcome to the Home Page!</h1>
-    <p>You have been successfully authenticated.</p>
-    
-    <p>
-        <a href="/youtube/auth/">Connect your YouTube account</a>
-    </p>
+    <div class="container">
+        <h1>Welcome to the Home Page!</h1>
+        <p></p>
+        
+        <div class="button-wrapper">
+            <a class="youtube-btn" href="/youtube/auth/">🎥 Connect your YouTube account</a>
+        </div>
+    </div>
 </body>
 </html>

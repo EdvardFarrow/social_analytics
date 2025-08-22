@@ -180,13 +180,6 @@ GOOGLE_TOKEN_URI = config("GOOGLE_TOKEN_URI")
 YOUTUBE_CLIENT_ID = config("YOUTUBE_CLIENT_ID")
 YOUTUBE_CLIENT_SECRET = config("YOUTUBE_CLIENT_SECRET")
 YOUTUBE_REDIRECT_URI = config("YOUTUBE_REDIRECT_URI")
-
-TIKTOK_CLIENT_KEY = config("TIKTOK_CLIENT_KEY")
-TIKTOK_CLIENT_SECRET = config("TIKTOK_CLIENT_SECRET")
-TIKTOK_REDIRECT_URI = config("TIKTOK_REDIRECT_URI")
-
-
-
 YOUTUBE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.readonly",
     "https://www.googleapis.com/auth/yt-analytics.readonly",
@@ -194,7 +187,7 @@ YOUTUBE_SCOPES = [
     'https://www.googleapis.com/auth/userinfo.email' 
 ]
 
-
+GEMINI_API_KEY = config("GEMINI_API_KEY")
 
 CSRF_COOKIE_SAMESITE = 'None'
 SESSION_COOKIE_SAMESITE = 'None'
