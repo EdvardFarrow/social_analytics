@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:15
+    container_name: social_analytics-db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - social_analytics_network
+
+  redis:
+    image: redis:7
+    container_name: social_analytics-redis
+    networks:
+      - social_analytics_network
+
+  web:
+    build: .
+    container_name: social_analytics-web
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000" 
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - .env
+    networks:
+      - social_analytics_network
+
+volumes:
+  postgres_data:
+
+networks:
+  social_analytics_network:
+    driver: bridge
